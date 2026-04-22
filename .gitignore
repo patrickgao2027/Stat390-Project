@@ -1,0 +1,16 @@
+### large images
+ISIC-images 2019 test/
+ISIC-images 2019 train/
+ISIC-images 2020 test/
+ISIC-images train 2020/
+### claude folder
+skin-lesion-autoresearch/
+
+### self code
+image.ipynb
+
+### metadata
+challenge-2019-test_metadata_2026-04-10.csv
+challenge-2019-training_metadata_2026-04-22.csv
+challenge-2020-test_metadata_2026-04-09.csv
+challenge-2020-training_metadata_2026-04-09.csv
