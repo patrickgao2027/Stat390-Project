@@ -27,6 +27,11 @@ df2019test = pd.read_csv("challenge-2019-test_metadata_2026-04-10.csv")
 df2020train = pd.read_csv("challenge-2020-training_metadata_2026-04-09.csv")
 df2020test = pd.read_csv("challenge-2020-test_metadata_2026-04-09.csv")
 
+# ground truth for test and train
+df2019trainResponse = df2019train['diagnosis_1']
+df2019testResponse = df2019test['diagnosis_1']
+df2020trainResponse = df2020train['diagnosis_1']
+df2020testResponse = df2020test['diagnosis_1']
 
 # ── Evaluation (frozen metric) ─────────────────────────────
 def evaluate(model, x_test, y_test):
