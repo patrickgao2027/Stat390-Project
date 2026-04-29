@@ -33,14 +33,14 @@ def evaluate(model, test_ds, y_test):
 
 
 # ── Logging ────────────────────────────────────────────────
-def log_result(experiment_id, roc_auc, recall, status, description):
+def log_result(experiment_id, roc_auc, accuracy, recall, precision, train_time, status, description):
     """Append one row to results.tsv."""
     file_exists = os.path.exists(RESULTS_FILE)
     with open(RESULTS_FILE, "a", newline="") as f:
         writer = csv.writer(f, delimiter="\t")
         if not file_exists:
-            writer.writerow(["experiment", "roc_auc", "recall", "status", "description"])
-        writer.writerow([experiment_id, f"{roc_auc:.6f}", f"{recall:.6f}", status, description])
+            writer.writerow(["experiment", "roc_auc", "accuracy", "recall", "precision", "train_time_s", "status", "description"])
+        writer.writerow([experiment_id, f"{roc_auc:.6f}", f"{accuracy:.6f}", f"{recall:.6f}", f"{precision:.6f}", f"{train_time:.2f}", status, description])
 
 
 # ── Plotting ───────────────────────────────────────────────

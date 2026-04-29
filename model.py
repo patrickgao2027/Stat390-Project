@@ -18,7 +18,6 @@ class SkinLesionModel:
         # SGDClassifier with log_loss = logistic regression, supports batch updates
         self.model = SGDClassifier(
             loss="log_loss",
-            class_weight="balanced",
             random_state=67,
             max_iter=1,
             warm_start=True,
@@ -30,7 +29,8 @@ class SkinLesionModel:
             for images, labels in train_ds:
                 X = images.numpy().reshape(len(images), -1)
                 y = labels.numpy()
-                self.model.partial_fit(X, y, classes=self._classes)
+                sample_weight = np.array([class_weight[yi] for yi in y]) if class_weight else None
+                self.model.partial_fit(X, y, classes=self._classes, sample_weight=sample_weight)
         return self
 
     def predict(self, x_ds):

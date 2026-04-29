@@ -11,7 +11,7 @@ Usage:
 import sys
 import time
 import subprocess
-from prepare import load_data, evaluate, plot_model_performance
+from prepare import load_data, evaluate, plot_model_performance, log_result
 from model import build_model
 
 
@@ -56,7 +56,7 @@ def main():
 
     # 5. Log
     commit = get_git_hash()
-    log_result(commit, roc_auc, recall, status, description)
+    log_result(commit, roc_auc, accuracy, recall, precision, train_time, status, description)
     print(f"Result logged to results.tsv (status={status})")
 
 if __name__ == "__main__":

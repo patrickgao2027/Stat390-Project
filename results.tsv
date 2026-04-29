@@ -1,0 +1,2 @@
+experiment	roc_auc	accuracy	recall	precision	train_time_s	status	description
+bb13e84	0.793200	0.708800	0.898200	0.370800	836.26	baseline	logistic regression baseline

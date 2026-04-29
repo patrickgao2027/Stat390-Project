@@ -8,14 +8,13 @@ This is a Northwestern University STAT 390 medical imaging project: a binary ski
 
 ## Running Experiments
 
-```bash
-# Install dependencies
-pip install -r skin-lesion-autoresearch/requirements.txt
+The project uses the Anaconda base environment. Always invoke Python via its full path:
 
+```bash
 # Run an experiment (after editing model.py)
-python run.py "description of change"            # status=keep
-python run.py "description of change" --baseline # status=baseline
-python run.py "description of change" --discard  # status=discard
+C:\Users\Owner\anaconda3\python.exe run.py "description of change"            # status=keep
+C:\Users\Owner\anaconda3\python.exe run.py "description of change" --baseline # status=baseline
+C:\Users\Owner\anaconda3\python.exe run.py "description of change" --discard  # status=discard
 ```
 
 Results are logged to `results.tsv` (columns: experiment, roc_auc, recall, status, description, git commit hash).
