@@ -1,3 +1,4 @@
 experiment	roc_auc	accuracy	recall	precision	train_time_s	status	description
 bb13e84	0.793200	0.708800	0.898200	0.370800	836.26	baseline	logistic regression baseline
 fc3e951	0.886735	0.809934	0.826603	0.482161	2465.44	keep	AlexNet pretrained full fine-tune lr=1e-4, 2nd run through iteration
+99ff7d6	0.884073	0.821102	0.764549	0.500389	1175.70	keep	EfficientNet-B0 pretrained full fine-tune lr=1e-4  3rd iteration
