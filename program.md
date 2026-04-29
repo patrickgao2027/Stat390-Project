@@ -5,12 +5,15 @@ You are a medical imaging researcher. Using the combined ISIC 2019 and 2020 data
 
 
 ### Rules
-1.  You may **ONLY** modify `model.py`
+1. You may **ONLY** modify `model.py`
 2. `prepare.py` and `run.py` are **FROZEN** — do not touch them
-3. `build_model()` must return a PyTorch or SK-Learn compatable estimator that is able to process image data
-4.  Be aware of the class imbalance that heavily skews towards class 0 (benign)
-5.  Also be aware that there are sometimes multiple lesions that belong to the same patient ID
-6.  No additional data sources or external downloads
+3. `build_model()` must return an object implementing all three of these methods:
+   - `fit(train_ds, epochs, steps_per_epoch, class_weight)` — `train_ds` is a `tf.data.Dataset` yielding `(image_batch, label_batch)`
+   - `predict(x_ds)` — `x_ds` is a `tf.data.Dataset` of image batches only; return a numpy array of class labels (0 or 1)
+   - `predict_proba(x_ds)` — same input; return a numpy array of shape `(n, 2)` where column 1 is P(malignant)
+4. Be aware of the class imbalance that heavily skews towards class 0 (benign)
+5. Also be aware that there are sometimes multiple lesions that belong to the same patient ID
+6. No additional data sources or external downloads
 
 ## Workflow
 

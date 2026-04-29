@@ -1,4 +1,5 @@
 """
+
 Run one experiment: build model, train, evaluate, log result.
 
 Usage:
@@ -38,31 +39,24 @@ def main():
 
     ### Load data finish editing
 
-    data = load_data()
+    train_ds, test_ds, steps_per_epoch, val_steps, class_weight, y_test = load_data()
 
     model = build_model()
     print(f"Model: {model}")
 
     # 3. Train
     t0 = time.time()
-    """
-    model.fit(X_train, y_train)
-    """
+    model.fit(train_ds, epochs=10, steps_per_epoch=steps_per_epoch, class_weight=class_weight)
     train_time = time.time() - t0
     print(f"Training time: {train_time:.2f}s")
 
-    #4. Evaluate
-    """
-    rocauc, accuracy, precision, recall = evaluate(model, X_val, y_val)
-    """
-    
+    # 4. Evaluate
+    roc_auc, accuracy, recall, precision = evaluate(model, test_ds, y_test)
+    print(f"ROC-AUC: {roc_auc:.4f} | Recall: {recall:.4f} | Accuracy: {accuracy:.4f} | Precision: {precision:.4f}")
+
     # 5. Log
     commit = get_git_hash()
-    
-    """
-    log_result(commit, None, None, status, description)
-    """
-    
+    log_result(commit, roc_auc, recall, status, description)
     print(f"Result logged to results.tsv (status={status})")
 
 if __name__ == "__main__":
