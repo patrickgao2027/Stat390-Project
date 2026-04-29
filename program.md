@@ -1,7 +1,7 @@
 # AutoResearch Agent Instructions
 
 ## Objective
-You are a medical imaging researcher. Using the combined ISIC 2019 and 2020 datasets, build the best possible binary classifier for skin lesion malignancy. First explore convolutional neural networks, then you are free to explore other options.  Your stopping condition is: AUC above 0.85 with the testing data, a recall score above 0.95, and a plain-English summary a non-technical reader could understand. When building the model, keep in mind that I want to be able to use this machine learning model on a smartphone camera, potentially using TensorFlow Lite.  Although do not let this goal distract you from the stopping conditions.
+You are a medical imaging researcher. Using the combined ISIC 2019 and 2020 datasets, build the best possible binary classifier for skin lesion malignancy. First explore logistic regression and transition to more powerful models such as convolutional neural networks, then you are free to explore other options.  I already have a logistic regression baseline model that has ROC_AUC of 0.79 so start with more advanced models.  Consider Alex-Net before using Efficient-Net -B0.  Your stopping condition is: AUC above 0.85 with the testing data, a recall score above 0.95, and a plain-English summary a non-technical reader could understand. When building the model, keep in mind that I want to be able to use this machine learning model on a smartphone camera, potentially using TensorFlow Lite.  Although do not let this goal distract you from the stopping conditions.
 
 
 ### Rules

@@ -1,51 +1,43 @@
 """
 EDITABLE — modify this file each iteration.
 
-build_model() must return an instance of a class that implements:
-    fit(train_ds, epochs, steps_per_epoch, class_weight)
-    predict(x_ds)         -> numpy array of class labels
-    predict_proba(x_ds)   -> numpy array of shape (n, 2), column 1 = P(malignant)
+Iteration: pretrained AlexNet (full fine-tune), replacing the 1000-way
+classifier with a single binary logit. ImageNet normalization is applied
+inside the module since prepare.py only scales to [0, 1].
 
-train_ds and x_ds are tf.data.Dataset objects.
+build_model() returns an instance satisfying run.py's contract via
+BaseTorchModel (see torch_adapter.py).
 """
 
-import numpy as np
-from sklearn.linear_model import SGDClassifier
+import torch
+import torch.nn as nn
+from torchvision import models
+
+from torch_adapter import BaseTorchModel
 
 
-class SkinLesionModel:
+class AlexNetBinary(nn.Module):
     def __init__(self):
-        # SGDClassifier with log_loss = logistic regression, supports batch updates
-        self.model = SGDClassifier(
-            loss="log_loss",
-            random_state=67,
-            max_iter=1,
-            warm_start=True,
-        )
-        self._classes = np.array([0, 1])
+        super().__init__()
+        backbone = models.alexnet(weights=models.AlexNet_Weights.DEFAULT)
+        backbone.classifier[6] = nn.Linear(4096, 1)
+        self.backbone = backbone
 
-    def fit(self, train_ds, epochs=10, steps_per_epoch=None, class_weight=None):
-        for epoch in range(epochs):
-            for images, labels in train_ds:
-                X = images.numpy().reshape(len(images), -1)
-                y = labels.numpy()
-                sample_weight = np.array([class_weight[yi] for yi in y]) if class_weight else None
-                self.model.partial_fit(X, y, classes=self._classes, sample_weight=sample_weight)
-        return self
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer("std",  torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
 
-    def predict(self, x_ds):
-        preds = []
-        for batch in x_ds:
-            X = batch.numpy().reshape(len(batch), -1)
-            preds.append(self.model.predict(X))
-        return np.concatenate(preds)
+    def forward(self, x):
+        x = (x - self.mean) / self.std
+        return self.backbone(x)
 
-    def predict_proba(self, x_ds):
-        probas = []
-        for batch in x_ds:
-            X = batch.numpy().reshape(len(batch), -1)
-            probas.append(self.model.predict_proba(X))
-        return np.concatenate(probas)
+
+class SkinLesionModel(BaseTorchModel):
+    def _build_module(self):
+        return AlexNetBinary()
+
+    def _build_optimizer(self, parameters):
+        trainable = [p for p in parameters if p.requires_grad]
+        return torch.optim.Adam(trainable, lr=1e-4)
 
 
 def build_model():
