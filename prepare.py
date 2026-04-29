@@ -4,6 +4,7 @@ Data loading, train/val split, evaluation metric, and plotting.
 """
 
 import numpy as np
+from sklearn.model_selection import GroupShuffleSplit, train_test_split
 from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, precision_score
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
@@ -12,26 +13,30 @@ import os
 import PIL
 import PIL.Image
 import tensorflow as tf
-import csv
 
-
-### VARS
+### Vars
 RANDOM_STATE = 67
 RESULTS_FILE = "results.tsv"
 ###
 
+df2019train = pd.read_csv("challenge-2019-training_metadata_2026-04-22.csv", low_memory=False)
+df2019test = pd.read_csv("challenge-2019-test_metadata_2026-04-10.csv", low_memory=False)
 
-df2019train = pd.read_csv("ISIC_2019_Training_Metadata.csv")
-df2019test = pd.read_csv("challenge-2019-test_metadata_2026-04-10.csv")
+df2020train = pd.read_csv("challenge-2020-training_metadata_2026-04-09.csv", low_memory=False)
+df2020test = pd.read_csv("challenge-2020-test_metadata_2026-04-09.csv", low_memory=False)
 
-df2020train = pd.read_csv("challenge-2020-training_metadata_2026-04-09.csv")
-df2020test = pd.read_csv("challenge-2020-test_metadata_2026-04-09.csv")
+
+df2019train = df2019train[(df2019train['diagnosis_1'] != 'Indeterminate') & (~df2019train['diagnosis_1'].isna()) ]
+df2019test = df2019test[(df2019test['diagnosis_1'] != 'Indeterminate') & (~df2019test['diagnosis_1'].isna())]
+df2020train = df2020train[df2020train['diagnosis_1'] != 'Indeterminate']
+df2020test = df2020test[df2020test['diagnosis_1'] != 'Indeterminate']
 
 # ground truth for test and train
 df2019trainResponse = df2019train['diagnosis_1']
 df2019testResponse = df2019test['diagnosis_1']
 df2020trainResponse = df2020train['diagnosis_1']
 df2020testResponse = df2020test['diagnosis_1']
+
 
 # ── Evaluation (frozen metric) ─────────────────────────────
 def evaluate(model, x_test, y_test):
@@ -92,13 +97,11 @@ def plot_model_performance(model, x_test, y_test):
     plt.grid(alpha=0.3)
     plt.show()
 
-from sklearn.model_selection import train_test_split
-
 # ── Paths ───────────────────────────────────────────────────
 IMG_DIR_2019 = r"C:\Users\Owner\Documents\Stat390-Project\ISIC-images 2019 train"
 IMG_DIR_2020 = r"C:\Users\Owner\Documents\Stat390-Project\ISIC-images train 2020"
-IMG_SIZE     = (224, 224)
-BATCH_SIZE   = 32
+IMG_SIZE     = (128, 128)
+BATCH_SIZE   = 16
 AUTOTUNE     = tf.data.AUTOTUNE
 
 def load_data():
@@ -130,7 +133,6 @@ def load_data():
     df["target"] = (df["diagnosis_1"].str.lower() == "malignant").astype(int)
 
     # ── 2. Drop rows where the image file doesn't exist ────
-    # Catches any missing downloads before the pipeline starts
     def file_exists(row):
         return os.path.exists(os.path.join(row["img_dir"], row["isic_id"] + ".jpg"))
 
@@ -140,7 +142,6 @@ def load_data():
     print(f"Class distribution:\n{df['target'].value_counts()}\n")
 
     # ── 3. Stratified train/test split on file paths ───────
-    # We split the DataFrame (just strings + ints), not image arrays
     paths = (df["img_dir"] + "\\" + df["isic_id"] + ".jpg").values
     labels = df["target"].values
 
@@ -150,6 +151,11 @@ def load_data():
         stratify=labels,
         random_state=RANDOM_STATE
     )
+
+    # ── 3b. Subsample training data to 30% ────────────────
+    sample_size = int(len(paths_train) * 0.3)
+    paths_train = paths_train[:sample_size]
+    y_train = y_train[:sample_size]
 
     # ── 4. Class weight for imbalance ──────────────────────
     n_neg = (y_train == 0).sum()
@@ -176,9 +182,7 @@ def load_data():
         image = tf.image.random_brightness(image, max_delta=0.2)
         image = tf.image.random_contrast(image, lower=0.8, upper=1.2)
         image = tf.image.random_saturation(image, lower=0.8, upper=1.2)
-        # Random rotation ±15° via tfa or a manual crop — skip for now,
-        # tf.image doesn't have native rotation; add if you install
-        # tensorflow-addons: tfa.image.rotate(image, angles)
+        image = tf.clip_by_value(image, 0.0, 1.0)
         return image, label
 
     def build_dataset(paths, labels, training=False):
@@ -189,7 +193,7 @@ def load_data():
         if training:
             ds = ds.map(augment, num_parallel_calls=AUTOTUNE)
         ds = ds.batch(BATCH_SIZE)
-        ds = ds.prefetch(AUTOTUNE)   # loads next batch while GPU trains current
+        ds = ds.prefetch(AUTOTUNE)
         return ds
 
     train_ds = build_dataset(paths_train, y_train, training=True)
