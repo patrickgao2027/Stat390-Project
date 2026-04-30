@@ -3,3 +3,4 @@ bb13e84	0.793200	0.708800	0.898200	0.370800	836.26	baseline	logistic regression 
 fc3e951	0.886735	0.809934	0.826603	0.482161	2465.44	keep	AlexNet pretrained full fine-tune lr=1e-4, 2nd run through iteration
 99ff7d6	0.884073	0.821102	0.764549	0.500389	1175.70	keep	EfficientNet-B0 pretrained full fine-tune lr=1e-4  3rd iteration
 817e6fa	0.897496	0.817379	0.831354	0.494176	2690.67	keep	EfficientNet-B0 + 224x224 upscale + pos_weight=10 4th iteration
+82ff045	0.892424	0.821155	0.790974	0.500470	3530.55	keep	EfficientNet-B2 + 224 upscale + two-phase + pos_weight=10 5th iteration
