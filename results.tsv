@@ -4,3 +4,4 @@ fc3e951	0.886735	0.809934	0.826603	0.482161	2465.44	keep	AlexNet pretrained full
 99ff7d6	0.884073	0.821102	0.764549	0.500389	1175.70	keep	EfficientNet-B0 pretrained full fine-tune lr=1e-4  3rd iteration
 817e6fa	0.897496	0.817379	0.831354	0.494176	2690.67	keep	EfficientNet-B0 + 224x224 upscale + pos_weight=10 4th iteration
 82ff045	0.892424	0.821155	0.790974	0.500470	3530.55	keep	EfficientNet-B2 + 224 upscale + two-phase + pos_weight=10 5th iteration
+fc6c6f0	0.895368	0.790683	0.883610	0.456442	1323.53	keep	EfficientNet-B2 + 224 + two-phase + threshold calibration for recall>=0.97 6th iteration
