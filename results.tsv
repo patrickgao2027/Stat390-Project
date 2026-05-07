@@ -6,3 +6,9 @@ fc3e951	0.886735	0.809934	0.826603	0.482161	2465.44	keep	AlexNet pretrained full
 82ff045	0.892424	0.821155	0.790974	0.500470	3530.55	keep	EfficientNet-B2 + 224 upscale + two-phase + pos_weight=10 5th iteration
 fc6c6f0	0.895368	0.790683	0.883610	0.456442	1323.53	keep	EfficientNet-B2 + 224 + two-phase + threshold calibration for recall>=0.97 6th iteration
 55ed2e7	0.900480	0.752499	0.937352	0.415395	3507.87	keep	EfficientNet-B2 + 224 + two-phase + tighter calibration target=0.995 / 60 batches 7th iteration
+7a57f2c	0.895132	0.809243	0.847981	0.481538	3127.33	keep	EfficientNet-B2 + tightened cal + SAFETY_MARGIN=0.85 8th iteration
+7a57f2c	0.896235	0.773665	0.891033	0.435559	3388.90	keep	EfficientNet-B2 + cal=200 batches + TARGET_RECALL=1.0 9th iteration
+7a57f2c	0.896922	0.750160	0.916271	0.411357	3592.44	keep	Week4 controlled exp: pos_weight=10 replicate 1/2 [iter 10]
+7a57f2c	0.902382	0.801159	0.887470	0.470783	3248.82	keep	Week4 controlled exp: pos_weight=20 replicate 1/2 [iter 11]
+7a57f2c	0.897459	0.780951	0.899644	0.444869	3571.44	keep	Week4 controlled exp: pos_weight=10 replicate 2/2 [iter 12]
+7a57f2c	0.895821	0.711710	0.955463	0.379079	3637.07	keep	Week4 controlled exp: pos_weight=20 replicate 2/2 [iter 13]
