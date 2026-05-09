@@ -54,13 +54,35 @@ are the 3 holdout-cal reps.
 POS_WEIGHT reset to 10.0 to match iters 7/10/12 baseline.
 """
 
+import os
+
 import numpy as np
+import tensorflow as tf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 
 from torch_adapter import BaseTorchModel
+
+# ---------------------------------------------------------------------------
+# Iter 20: full determinism. Iters 14-19 confirmed Signal Failure was driven
+# by the threshold estimator's variance (recall std 0.039 with min estimator,
+# 0.014 with 5th-percentile). Seeding all RNGs eliminates the variance source
+# itself — making the high-recall min estimator usable. If iters 20 and 21
+# produce identical numbers, the loop is reproducible and single-run
+# experiments become valid evidence going forward.
+# ---------------------------------------------------------------------------
+SEED = 67
+os.environ["PYTHONHASHSEED"] = str(SEED)
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")  # required for full cuda determinism
+
+tf.random.set_seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 
 class EfficientNetB2Binary(nn.Module):
@@ -83,9 +105,9 @@ class EfficientNetB2Binary(nn.Module):
 class SkinLesionModel(BaseTorchModel):
     HEAD_WARMUP_EPOCHS = 2
     CALIBRATION_BATCHES = 60
-    TARGET_RECALL = 0.95     # Iter 17 single-var change: 0.995 -> 0.95 (min -> 5th-percentile)
+    TARGET_RECALL = 0.995    # Iter 20: revert to min estimator (high recall) now that seeding kills variance
     POS_WEIGHT = 10.0
-    USE_HOLDOUT_CAL = True   # Held fixed from iters 14-16 (no longer the experimental axis)
+    USE_HOLDOUT_CAL = True   # Kept on (cleaner cal even though it's not the dominant variance source)
 
     def _build_module(self):
         return EfficientNetB2Binary()
