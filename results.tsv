@@ -20,3 +20,5 @@ fc6c6f0	0.895368	0.790683	0.883610	0.456442	1323.53	keep	EfficientNet-B2 + 224 +
 9d1cc2d	0.890865	0.835620	0.749109	0.529042	3681.03	keep	Week5: TARGET_RECALL=0.95, holdout cal, replicate 3/3 [iter 19]
 a73de59	0.896167	0.815890	0.824525	0.491678	3551.93	keep	Week5: full determinism (seed=67, cudnn deterministic), TARGET_RECALL=0.995 [iter 20]
 7965f2b	0.893556	0.802755	0.849762	0.471888	3672.72	keep	Week5: determinism verification replicate (same seed=67, no changes) [iter 21]
+4af50e1	0.885189	0.835195	0.753563	0.527980	5513.00	keep	Wk5 p2: TOTAL_EPOCHS 10->15 (no seeding, clean baseline), rep 1/3 [iter 22]
+4af50e1	0.896343	0.713252	0.953979	0.380237	6639.74	keep	Wk5 p2: backbone B2->B4 (19M params, single-variable vs iters 14-16), rep 1/3 [iter 23]
