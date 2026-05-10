@@ -2,7 +2,7 @@
 
 **Project:** ISIC binary skin lesion classifier (benign vs. malignant)
 **Author:** Patrick Gao
-**Block:** 19 completed iters + 1 in flight + 1 crash recovered = 21 attempts
+**Block:** 21 completed iters + 1 crash recovered = 22 attempts
 
 The Week-5 PDF asks for *interpretable, reproducible* gains — not the highest score. This memo reports each modification class with its **effect size, replication status, and whether the causal explanation holds up.**
 
@@ -20,6 +20,7 @@ The Week-5 PDF asks for *interpretable, reproducible* gains — not the highest 
 5. Multiplicative `SAFETY_MARGIN` on the threshold (iter 8, regressed)
 6. Replacing leaked train cal with held-out validation slice (iters 14–16, *widened* variance)
 7. Multi-knob threshold tweaks in general (iters 7, 9 — confounded, can't attribute)
+8. Full RNG seeding for determinism (iters 20–21, the data pipeline can't be controlled from model.py)
 
 ---
 
@@ -87,17 +88,27 @@ This rejection redirected the next experiment to attack the *estimator* instead 
 
 Iters 4, 5, 7, 9 all changed two variables at once. Even when numbers improved (iter 7's recall went from 0.88 to 0.94), the gain was not attributable to a single change. Per the Week-4 framework: *"a confounded experiment is uninterpretable."* Going forward I have a memorized rule from this block: **change exactly one thing per iter, and replicate before drawing conclusions.**
 
+### 8. Full RNG seeding for determinism (iters 20–21)
+
+Hypothesis: seeding PyTorch (`torch.manual_seed`), CUDA (`torch.cuda.manual_seed_all`), NumPy (`np.random.seed`), TensorFlow (`tf.random.set_seed`), and `PYTHONHASHSEED` all to the same value would make repeated runs of identical code produce identical results — allowing the high-recall `min` estimator to be used without recall variance.
+
+Result: **not deterministic.** Iters 20 and 21 ran identical code with seed=67 and produced different losses starting from epoch 1 (1.0396 vs 1.0288), different thresholds (0.560 vs 0.603), and different recall (0.825 vs 0.850).
+
+**Why it failed:** `prepare.py` calls `tf.data.Dataset.shuffle()` during `load_data()`, which is called by `run.py` *before* `model.py` is imported. The shuffle's operation-level seed is determined at the time `.shuffle()` is called — before any `tf.random.set_seed()` in `model.py` can run. Since `prepare.py` is frozen, this cannot be fixed from model.py alone.
+
+**What this means:** the residual recall variance (std ~0.03–0.04 with the min estimator) is structural and irreducible without changing the frozen data pipeline. The two real levers remaining are (a) tuning the percentile parameter to find a better recall/variance tradeoff, or (b) accepting the variance and reporting the mean ± std honestly.
+
 ---
 
 ## Lightning-round answers (for the meeting)
 
 | Question | Answer |
 |---|---|
-| **Block length** | 21 attempts (19 completed, 1 crash recovered, 1 in flight). ~14 hours of training + ~1 hour of agent overhead. |
-| **Best result vs. baseline** | AUC 0.79 → 0.90 (mean across iters 6–19), reproduced over ~20 runs. Recall 0.90 → ~0.92 mean with within-condition std 0.03–0.04 — close to 0.95 target but not reproducibly past it. |
-| **Keep / Discard / Crash rates** | 17 keep / 2 discard / 1 crash (out of 20 completed) = 85% / 10% / 5% |
+| **Block length** | 22 attempts (21 completed, 1 crash recovered). ~16 hours of training + ~1 hour of agent overhead. |
+| **Best result vs. baseline** | AUC 0.79 → 0.90 (mean across iters 6–21), reproduced over ~20 runs. Recall 0.90 → ~0.83–0.92 mean depending on estimator — close to 0.95 target but not reproducibly past it. |
+| **Keep / Discard / Crash rates** | 19 keep / 2 discard / 1 crash (out of 21 completed) = 90% / 10% / 5% |
 | **Most helpful modification type** | (a) Architecture upgrade to a pretrained CNN, (b) introducing a threshold-calibration mechanism with default hyperparameters, (c) replacing the noisy `min` threshold estimator with a percentile. |
-| **Biggest current uncertainty** | Whether a single fully-deterministic run (iter 20, in flight) can reproducibly hit recall ≥ 0.95 with the high-recall `min` estimator. The percentile estimator I confirmed *does* fix variance has the wrong operating point. Determinism would let me use the high-recall estimator without paying the variance cost — but only if the deterministic seed happens to land in a "good" basin. |
+| **Biggest current uncertainty** | The residual recall variance (std ~0.03–0.04 with min estimator) is structural — it comes from the frozen `prepare.py` data pipeline, which cannot be seeded from model.py. The two remaining levers are percentile tuning (finding a percentile between min and 5th-pct that gives mean recall ~0.90 with lower std) and accepting the variance as inherent to the loop. |
 
 ## What did the agent actually discover?
 

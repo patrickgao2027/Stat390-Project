@@ -1,18 +1,17 @@
 # Week 5 — Keep / Discard / Crash Summary
 
-**Block window:** Iter 1 → Iter 20 (in flight) | **Total attempts:** 21
+**Block window:** Iter 1 → Iter 21 (completed) | **Total attempts:** 22
 
 ## Headline counts
 
 | Outcome | Count | Rate |
 |---|---:|---:|
-| **Keep** (kept, committed to `main`, pushed to GitHub) | 17 | 81 % |
-| **Discard** (run completed but reverted via `git checkout model.py`) | 2 | 10 % |
+| **Keep** (kept, committed to `main`, pushed to GitHub) | 19 | 86 % |
+| **Discard** (run completed but reverted via `git checkout model.py`) | 2 | 9 % |
 | **Crash** (run never produced a `results.tsv` row) | 1 | 5 % |
-| In flight | 1 | 5 % |
-| **Total** | **21** | **100 %** |
+| **Total** | **22** | **100 %** |
 
-(Out of the 20 *completed* attempts, the keep/discard/crash split is 17/2/1 = 85% keep, 10% discard, 5% crash.)
+(Out of the 21 *completed* attempts, the keep/discard/crash split is 19/2/1 = 90% keep, 10% discard, 5% crash.)
 
 The "discard" rate is artificially low because **the failure mode I corrected most often was confounding, not regression** — and confounded runs were kept (not discarded) because their numbers are interpretable as data points even when their causal claims aren't. Both true regressions (iters 8 and 9) were caught and reverted within the same session.
 
@@ -27,6 +26,7 @@ Grouped by what the iteration was meant to demonstrate:
 | Week-4 controlled experiment (pos_weight) | 10, 11, 12, 13 | The first set of 4 fresh single-variable replicated runs. All kept by design (controlled-experiment data points, regardless of outcome). |
 | Week-5 priority-1 controlled experiment (holdout cal) | 14, 15, 16 | Three replicates of `USE_HOLDOUT_CAL=True`. All kept — the negative result (hypothesis rejected) is still a research finding. |
 | Week-5 priority-1 corrected (percentile estimator) | 17, 18, 19 | Three replicates of `TARGET_RECALL=0.95`. All kept — variance fix confirmed. |
+| Week-5 determinism experiment | 20, 21 | Full PyTorch+TF+CUDA seeding (seed=67). Two reps with identical code. All kept — negative result (determinism NOT achieved) is still a research finding. |
 
 ## Discard — the 2 reverted runs
 

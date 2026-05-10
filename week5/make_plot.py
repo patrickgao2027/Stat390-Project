@@ -43,6 +43,8 @@ ITER_LABELS = [
     "17: pct 1",
     "18: pct 2",
     "19: pct 3",
+    "20: seed=67 r1",
+    "21: seed=67 r2",
 ]
 
 # Mark the run-status of each iter (matches keep_discard_crash_summary.md)
@@ -53,12 +55,14 @@ STATUS = {
     10: "keep", 11: "keep", 12: "keep", 13: "keep",
     14: "keep", 15: "keep", 16: "keep",
     17: "keep", 18: "keep", 19: "keep",
+    20: "keep", 21: "keep",
 }
 
 CONTROLLED_BLOCKS = {
     "pos_weight (Wk4)": (10, 13),
     "holdout cal (Wk5 p1)": (14, 16),
-    "percentile estimator (Wk5 p1.5)": (17, 19),
+    "percentile est. (Wk5 p1.5)": (17, 19),
+    "determinism test (Wk5 p2)": (20, 21),
 }
 
 
@@ -82,7 +86,7 @@ def make_metric_trajectory(df):
                            label=status)
     ax_auc.axhline(0.85, color="red", linestyle="--", linewidth=1, label="target ≥ 0.85")
     ax_auc.set_ylabel("ROC-AUC")
-    ax_auc.set_title("ROC-AUC trajectory across the autonomous block (iters 1–19)")
+    ax_auc.set_title("ROC-AUC trajectory across the autonomous block (iters 1–21)")
     ax_auc.set_ylim(0.75, 0.92)
     ax_auc.grid(alpha=0.3)
     ax_auc.legend(loc="lower right", fontsize=9)
@@ -101,7 +105,7 @@ def make_metric_trajectory(df):
     ax_rec.axhline(0.95, color="red", linestyle="--", linewidth=1, label="target ≥ 0.95")
     ax_rec.set_ylabel("Recall")
     ax_rec.set_xlabel("Iteration")
-    ax_rec.set_title("Recall trajectory across the autonomous block (iters 1–19)")
+    ax_rec.set_title("Recall trajectory across the autonomous block (iters 1–21)")
     ax_rec.set_ylim(0.70, 1.00)
     ax_rec.grid(alpha=0.3)
     ax_rec.legend(loc="lower right", fontsize=9)
@@ -110,12 +114,12 @@ def make_metric_trajectory(df):
                         xytext=(0, 8), ha="center", fontsize=7)
 
     # Shade the controlled-experiment sub-blocks on both axes
-    block_colors = ["#fff2cc", "#dcedc8", "#cfe2f3"]
+    block_colors = ["#fff2cc", "#dcedc8", "#cfe2f3", "#f3e5f5"]
     for (label, (start, end)), bcolor in zip(CONTROLLED_BLOCKS.items(), block_colors):
         for ax in (ax_auc, ax_rec):
             ax.axvspan(start - 0.4, end + 0.4, color=bcolor, alpha=0.6, zorder=0)
-        ax_auc.text((start + end) / 2, 0.755, f"controlled: {label}",
-                    ha="center", fontsize=8, style="italic", color="#444")
+        ax_auc.text((start + end) / 2, 0.755, label,
+                    ha="center", fontsize=7.5, style="italic", color="#444")
 
     ax_rec.set_xticks(iters)
     ax_rec.set_xticklabels(ITER_LABELS, rotation=40, ha="right", fontsize=8)
@@ -207,7 +211,7 @@ def make_keep_discard_crash(df):
 
     bars = ax.bar(labels, values, color=colors, edgecolor="black")
     ax.set_ylabel("Count")
-    ax.set_title("Run outcomes across the autonomous block (n=21 attempts)")
+    ax.set_title("Run outcomes across the autonomous block (n=22 attempts)")
     ax.grid(axis="y", alpha=0.3)
     for bar, v in zip(bars, values):
         ax.text(bar.get_x() + bar.get_width() / 2, v + 0.3, str(v),

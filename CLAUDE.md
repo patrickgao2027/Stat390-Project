@@ -15,9 +15,10 @@ Northwestern STAT 390 medical imaging capstone: a binary skin lesion classifier 
 
 ## Running Experiments
 
-The project uses the Anaconda base environment. Always invoke Python via its full path, and use `-u` for unbuffered stdout (otherwise long training runs look like they've stalled because per-epoch lines stay block-buffered until the buffer fills):
+The project uses the Anaconda base environment. **Always use PowerShell** — the backslash path (`C:\...\python.exe`) is silently not found (exit code 127) when launched from Bash. Use `-u` for unbuffered stdout (otherwise per-epoch lines stay block-buffered and long runs look stalled):
 
-```bash
+```powershell
+# In PowerShell (Set-Location to project root first):
 C:\Users\Owner\anaconda3\python.exe -u run.py "description Nth iteration"             # status=keep (default)
 C:\Users\Owner\anaconda3\python.exe -u run.py "description" --baseline                # status=baseline
 C:\Users\Owner\anaconda3\python.exe -u run.py "description" --discard                 # status=discard
@@ -43,7 +44,7 @@ torch_adapter.py     ──────►  BaseTorchModel (predict, predict_pro
 run.py (frozen)      ──────►  fit, evaluate, log to results.tsv
 ```
 
-- **`prepare.py`** — loads ISIC CSV metadata, merges 2019+2020, filters indeterminate diagnoses, **stratified 80/20 split** seeded by `RANDOM_STATE=67`, subsamples training to 30%, returns `tf.data.Dataset` pipelines yielding NHWC float32 in `[0, 1]` at **128×128**, plus `class_weight` dict (~5.31 for malignant). Note: the seed in `prepare.py` only seeds the data pipeline — PyTorch model init and cuDNN ops are *not* seeded, which is why repeated runs of identical code produce different fits.
+- **`prepare.py`** — loads ISIC CSV metadata, merges 2019+2020, filters indeterminate diagnoses, **stratified 80/20 split** seeded by `RANDOM_STATE=67`, subsamples training to 30%, returns `tf.data.Dataset` pipelines yielding NHWC float32 in `[0, 1]` at **128×128**, plus `class_weight` dict (~5.31 for malignant). The `tf.data.Dataset.shuffle()` calls happen here, **before** `model.py` is ever imported. Setting `tf.random.set_seed()` in `model.py` therefore runs too late to control the shuffle order — full training determinism is not achievable from `model.py` alone without modifying the frozen `prepare.py`.
 - **`torch_adapter.py`** — `BaseTorchModel` adapter that wraps a `nn.Module` producing logits. Handles the TF→Torch conversion (`NHWC → NCHW`), the BCEWithLogitsLoss training loop with `pos_weight`, and exposes `predict()` / `predict_proba()`. **`predict()` uses a hardcoded `threshold = 0.5`** unless the subclass overrides it. Most architectural choices and any threshold tuning logic live in `model.py` subclasses, not here.
 - **`model.py`** — must subclass `BaseTorchModel`, override `_build_module()` to return the `nn.Module`, and may override `fit()` for two-phase training, threshold calibration, etc. The `nn.Module` typically upscales the 128×128 input to **224×224** with `F.interpolate` and applies ImageNet normalization before passing to a pretrained torchvision backbone.
 - **`run.py`** — calls `load_data()` → `build_model()` → `model.fit(...)` → `evaluate(model, test_ds, y_test)` → log row → save ROC + confusion-matrix plots.
@@ -68,8 +69,25 @@ run.py (frozen)      ──────►  fit, evaluate, log to results.tsv
 
 ## Other directories
 
-- **`week4/`** — Week 4 deliverable artifacts: controlled-experiment writeup, results matrix, metric-over-time plot, error taxonomy, failure analysis memo, and `make_plot.py` to regenerate the plots from `results.tsv`.
+- **`week4/`** — Week 4 deliverable artifacts: controlled-experiment writeup, results matrix, metric-over-time plot, error taxonomy, failure analysis memo, and `make_plot.py` to regenerate plots from `results.tsv`.
+- **`week5/`** — Week 5 deliverable artifacts: full experiment log bundle (all 21 attempts), keep/discard/crash summary, best-vs-baseline comparison, "what actually worked" memo, and `make_plot.py` for metric trajectory + controlled-experiment + outcome bar charts. Run `python week5/make_plot.py` from the project root to regenerate the three PNGs.
 - **`skin-lesion-autoresearch/`** — earlier exploratory scaffold (separate `src/`, `models/`, `results/` trees). **Not imported by the live loop** in `run.py` — only kept as historical reference. Don't import from it; copy code in if useful.
+
+## Current project state (as of iter 21)
+
+`results.tsv` has 21 rows (iter 1 baseline → iter 21). Key findings so far:
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| ROC-AUC ≥ 0.85 | ✅ **Met** since iter 2 | Every CNN iter sits in [0.886, 0.901]; iters 10–13 mean 0.898 ± 0.003 |
+| Recall ≥ 0.95 | ❌ **Not reproducibly met** | Crossed twice as single-run noise tails (iters 13, 15); mean ~0.83–0.92 depending on estimator |
+
+**Open problem — threshold estimator variance:**
+- `min(positive_prob)` estimator (TARGET_RECALL=0.995): mean recall ~0.92, std ~0.04 — high mean, noisy
+- 5th-percentile estimator (TARGET_RECALL=0.95): mean recall ~0.77, std ~0.014 — stable but wrong operating point
+- Full RNG seeding (iters 20–21): didn't achieve determinism (data shuffle is set in `prepare.py` before model.py runs); recall still varied 0.825 vs 0.850 across identical runs
+
+**Next lever to try:** tune the percentile between min and 5th-pct (e.g. TARGET_RECALL=0.98 ≈ 2nd–3rd percentile of ~157 holdout positives) to find a tradeoff with lower std than min but higher mean recall than 5th-pct. Run 3 replicates to measure.
 
 ## Deployment Target (Stretch)
 

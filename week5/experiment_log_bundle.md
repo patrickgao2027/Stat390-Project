@@ -2,8 +2,8 @@
 
 **Project:** ISIC binary skin lesion classifier (benign vs. malignant)
 **Author:** Patrick Gao
-**Block window:** Iter 1 (baseline) → Iter 20 (deterministic check, in flight)
-**Iterations logged:** 19 successfully completed + 1 crash (recovered) + 1 in flight = 21 attempts
+**Block window:** Iter 1 (baseline) → Iter 21 (determinism verification, completed)
+**Iterations logged:** 21 successfully completed + 1 crash (recovered) = 22 attempts
 
 This file is the single source of truth for every run in the autonomous block. Every row in `results.tsv` is reflected here, plus the one run that crashed before logging and the operational events that are not visible from `results.tsv` alone.
 
@@ -33,7 +33,8 @@ This file is the single source of truth for every run in the autonomous block. E
 | 17 | 9d1cc2d | keep | corrected priority-1 controlled set: `TARGET_RECALL` 0.995→0.95 (min → 5th-percentile) rep 1/3 | 0.8984 | 0.7743 | 0.5458 | 3472 | Different single variable. Cal threshold variance dropped 4.5× (0.135 → 0.030). |
 | 18 | 9d1cc2d | keep | rep 2/3 | 0.8938 | 0.7705 | 0.5180 | 3807 | |
 | 19 | 9d1cc2d | keep | rep 3/3 | 0.8909 | 0.7491 | 0.5290 | 3681 | Recall std 0.014 vs 0.039 with min estimator — **2.8× tighter.** Mean recall fell 0.92→0.77 (tradeoff quantified). |
-| 20 | 155d0d3 | in flight | full PyTorch+CUDA+TF determinism (seed=67, cudnn deterministic) + revert to TARGET_RECALL=0.995 | — | — | — | ~ | Hypothesis: with all RNGs seeded, the high-recall min estimator becomes reproducible. If iter 21 produces identical numbers, the loop is fully deterministic. |
+| 20 | a73de59 | keep | full PyTorch+CUDA+TF determinism (seed=67, cudnn deterministic) + revert to TARGET_RECALL=0.995 | 0.8962 | 0.8245 | 0.4917 | 3552 | Threshold=0.560 (min of 157 holdout positives). Seed 67 produced a model where all positives score ≥ 0.56 → recall lower than unseeded min estimator mean (0.92). |
+| 21 | 7965f2b | keep | determinism verification — identical code, no changes | 0.8936 | 0.8498 | 0.4719 | 3673 | Threshold=0.603. **Determinism NOT achieved**: losses differed from epoch 1 (1.0396 vs 1.0288). Root cause: `prepare.py` calls `tf.data.shuffle()` before `model.py` is imported, so `tf.random.set_seed()` in model.py runs too late. Full determinism requires modifying the frozen `prepare.py`. |
 
 `(parent)` in the commit column means `model.py` had uncommitted changes when the run logged — `run.py` records the parent commit hash, so several rows share `7a57f2c`. The "what changed" column is the source of truth for what code was actually used.
 
@@ -42,17 +43,19 @@ This file is the single source of truth for every run in the autonomous block. E
 | Status | Count | Iters |
 |---|---:|---|
 | Baseline | 1 | 1 |
-| Keep (committed and pushed) | 16 | 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 |
+| Keep (committed and pushed) | 18 | 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 |
 | Discard (logged as `keep` by `run.py` default, but `model.py` reverted via `git checkout`) | 2 | 8, 9 |
 | Crash (no row in `results.tsv`) | 1 | iter 7 first attempt — `FileNotFoundError` from worktree |
-| In flight | 1 | 20 |
-| **Total attempts** | **21** | |
+| **Total attempts** | **22** | |
 
 The status mismatch on iters 8 and 9 (logged as `keep` but reality is `discard`) is itself a documented bit of trace integrity — the experiment-result matrix corrects the record.
 
 ## Git / version history (block commits, in order)
 
 ```
+7965f2b → f9fa804   iters 20-21 results: determinism test — NOT achieved
+a73de59 → 7965f2b   iter 20: full RNG seeding (seed=67, cudnn deterministic) + revert TARGET_RECALL=0.995
+155d0d3 → a73de59   Week 5 deliverables (iters 1-19 trace)
 9d1cc2d → 155d0d3   Week 5 iters 14-19: holdout cal + percentile estimator experiments
 7a57f2c → 9d1cc2d   Week 4: pos_weight controlled experiment + updated deliverables
 69d87b4 → 7a57f2c   iter 7: tighter calibration target=0.995, 60 batches — recall 0.937, AUC 0.9005
@@ -72,7 +75,7 @@ Every commit is on `main` and pushed to `github.com:patrickgao2027/Stat390-Proje
 - Hardware: RTX 4050 (laptop), 6 GiB VRAM, batch size 16
 - Training time per iter (deep learning runs): **~22–60 min** (avg ~55 min for B2)
 - GPU thermals during a 3-hour block: **63 °C, 39 W (~⅓ TDP), 98 % util** — well within healthy range
-- Total wall-clock spent on this block (iters 6–19, the autonomous-block portion): roughly **~14 hours of training** + ~1 hour of agent overhead (file edits, plotting, deliverable writing, git)
+- Total wall-clock spent on this block (iters 6–21, the autonomous-block portion): roughly **~16 hours of training** + ~1 hour of agent overhead (file edits, plotting, deliverable writing, git)
 - Disk: `results.tsv` (~2 KB), training has no checkpoint persistence between runs (each run trains from ImageNet weights)
 - Network: ~0 (no external data downloads)
 
@@ -91,4 +94,4 @@ git checkout <commit-hash-from-master-log>
 C:\Users\Owner\anaconda3\python.exe -u run.py "any description"
 ```
 
-The pre-iter-20 runs are NOT reproducible bit-exactly because PyTorch model init and cuDNN ops were not seeded. Iter 20 is the first run that should be bit-exact reproducible — that's the experimental hypothesis being tested as iter 20 trains.
+None of the runs are bit-exactly reproducible. Pre-iter-20 runs lack PyTorch/CUDA seeding. Iters 20-21 added full PyTorch+TF+CUDA seeding but still produced different results (AUC 0.896 vs 0.894, recall 0.825 vs 0.850) because `prepare.py`'s `tf.data.shuffle()` runs before `model.py` is imported — the data pipeline cannot be seeded from `model.py` alone.
