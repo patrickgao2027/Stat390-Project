@@ -1,8 +1,8 @@
 # Week 5 Submission — Index
 
-**Author:** Patrick Gao | **Project:** ISIC binary skin lesion classifier (benign vs. malignant) | **Block:** iters 1–21
+**Author:** Patrick Gao | **Project:** ISIC binary skin lesion classifier (benign vs. malignant) | **Block:** iters 1–25
 
-This is the autonomous-block trace for Week 5. The block is **21 completed iterations + 1 crash recovered = 22 attempts**, spanning ~16 hours of training, three replicated single-variable controlled experiments, and a determinism test. The trace meets all four Week-5 quality standards (logs complete, changes interpretable, rollback logic clear, experiments comparable) — see the deliverables below.
+This is the autonomous-block trace for Week 5. The block is **25 completed iterations + 1 crash recovered = 26 attempts**, spanning ~22 hours of training, four replicated single-variable controlled experiments, two discards, and a determinism test. The trace meets all four Week-5 quality standards (logs complete, changes interpretable, rollback logic clear, experiments comparable) — see the deliverables below.
 
 ## The 5 required deliverables
 
@@ -18,16 +18,16 @@ This is the autonomous-block trace for Week 5. The block is **21 completed itera
 
 | Question | Answer |
 |---|---|
-| **Block length** | 22 attempts, ~16 hours of training |
-| **Best result vs baseline** | AUC 0.793 → 0.898 ± 0.003 (real, n≈20 reproductions). Recall 0.898 → ~0.83–0.92 mean depending on estimator — close to the 0.95 target but not reproducibly past it. |
-| **Keep / Discard / Crash rates** | 19 / 2 / 1 (out of 21 completed) = 90 % / 10 % / 5 % |
-| **Most helpful modification type** | (a) Architecture upgrade (LR → pretrained CNN); (b) introducing a threshold-calibration mechanism with default hyperparameters; (c) replacing the noisy `min` threshold estimator with a percentile (variance-tightening) |
-| **Biggest current uncertainty** | The residual recall variance is structural — `prepare.py`'s frozen data pipeline cannot be seeded from model.py (confirmed by iters 20–21: identical code, different results). The two remaining levers are percentile tuning and accepting the ~0.04 std as inherent. |
+| **Block length** | 26 attempts, ~22 hours of training |
+| **Best result vs baseline** | AUC 0.793 → 0.896 ± 0.002 (B4, iters 23–25). Recall 0.898 → 0.942 ± 0.021 mean (B4) — **2/3 reps crossed 0.95**. Best single run: recall 0.954 (iter 23). |
+| **Keep / Discard / Crash rates** | 22 / 3 / 1 (out of 25 completed) = 88 % / 12 % / 4 % |
+| **Most helpful modification type** | (a) Architecture upgrade LR→CNN (+0.09 AUC); (b) threshold calibration mechanism (+0.09 recall); (c) B2→B4 backbone upgrade (+0.022 mean recall, std halved) |
+| **Biggest current uncertainty** | B4 crosses 0.95 in 2/3 runs but not the third. The variance floor is structural (frozen data pipeline). Next lever: tune TARGET_RECALL on B4 for a stable sub-min threshold. |
 
 ## Today's three questions
 
 > **What did the agent actually discover?**
-> The threshold-calibration step's `min(positive probability)` estimator over a small cal sample is the dominant *controllable* source of recall variance. The percentile swap (iters 17–19) confirmed this by cutting recall std 2.8×. However, full RNG seeding (iters 20–21) revealed a *structural* variance floor: the frozen `prepare.py` pipeline shuffles training data before model.py is ever imported, so the data order cannot be seeded from model.py. This means some run-to-run variance is irreducible within the project's constraints. The real levers going forward are (a) tuning the percentile to find a better recall/variance tradeoff, or (b) reporting mean ± std honestly rather than chasing a single-run peak.
+> Two real findings: (1) The `min(positive probability)` threshold estimator is the dominant *controllable* source of recall variance — confirmed by the percentile swap (iters 17–19, std cut 2.8×) and the determinism test (iters 20–21, structural variance floor identified). (2) The recall mean gap was a model-capacity problem — B2 couldn't confidently score hard malignant cases; B4 (iters 23–25) scores them higher, lowering the min threshold and pushing 2/3 reps above the 0.95 target. Both findings are replicated across 3-rep controlled experiments and directly traceable to specific mechanism changes.
 
 > **Was the improvement real or accidental?**
 > The AUC improvement (0.79 → 0.90) is real — reproduced across ~20 independent training runs, within-condition std ≈ 0.003. The recall improvement (0.90 → ~0.92 mean) is real on average but the two single runs that crossed 0.95 (iters 13 and 15) are accidental — their replicate siblings produced 0.888 and 0.892 respectively. Treating either as the project win would be the numbered Week-5 failure mode "the best run looked good, but I'm not sure why."

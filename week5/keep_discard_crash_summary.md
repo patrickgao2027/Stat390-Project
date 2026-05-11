@@ -1,17 +1,17 @@
 # Week 5 — Keep / Discard / Crash Summary
 
-**Block window:** Iter 1 → Iter 21 (completed) | **Total attempts:** 22
+**Block window:** Iter 1 → Iter 25 (completed) | **Total attempts:** 26
 
 ## Headline counts
 
 | Outcome | Count | Rate |
 |---|---:|---:|
-| **Keep** (kept, committed to `main`, pushed to GitHub) | 19 | 86 % |
-| **Discard** (run completed but reverted via `git checkout model.py`) | 2 | 9 % |
-| **Crash** (run never produced a `results.tsv` row) | 1 | 5 % |
-| **Total** | **22** | **100 %** |
+| **Keep** (kept, committed to `main`, pushed to GitHub) | 22 | 85 % |
+| **Discard** (run completed but reverted via `git checkout model.py`) | 3 | 12 % |
+| **Crash** (run never produced a `results.tsv` row) | 1 | 4 % |
+| **Total** | **26** | **100 %** |
 
-(Out of the 21 *completed* attempts, the keep/discard/crash split is 19/2/1 = 90% keep, 10% discard, 5% crash.)
+(Out of the 25 *completed* attempts, the keep/discard/crash split is 22/3/1 = 88% keep, 12% discard, 4% crash.)
 
 The "discard" rate is artificially low because **the failure mode I corrected most often was confounding, not regression** — and confounded runs were kept (not discarded) because their numbers are interpretable as data points even when their causal claims aren't. Both true regressions (iters 8 and 9) were caught and reverted within the same session.
 
@@ -27,17 +27,19 @@ Grouped by what the iteration was meant to demonstrate:
 | Week-5 priority-1 controlled experiment (holdout cal) | 14, 15, 16 | Three replicates of `USE_HOLDOUT_CAL=True`. All kept — the negative result (hypothesis rejected) is still a research finding. |
 | Week-5 priority-1 corrected (percentile estimator) | 17, 18, 19 | Three replicates of `TARGET_RECALL=0.95`. All kept — variance fix confirmed. |
 | Week-5 determinism experiment | 20, 21 | Full PyTorch+TF+CUDA seeding (seed=67). Two reps with identical code. All kept — negative result (determinism NOT achieved) is still a research finding. |
+| Week-5 backbone upgrade (B4) | 23, 24, 25 | EfficientNet-B4 controlled experiment, 3 reps. All kept — mean recall 0.942 ± 0.021, improvement over B2 confirmed. |
 
-## Discard — the 2 reverted runs
+## Discard — the 3 reverted runs
 
-Both are *true regressions* that were caught with my Week-4 decision rule (recall must improve AND ROC-AUC stays ≥ 0.85; otherwise revert).
+All are *true regressions* caught with the Week-4 decision rule (recall must improve AND ROC-AUC stays ≥ 0.85; otherwise revert).
 
 | Iter | What changed | Why discarded | Rollback action |
 |---|---|---|---|
-| **8** | added `SAFETY_MARGIN=0.85` multiplier on the calibrated threshold | recall *dropped* from iter 7's 0.937 to 0.848. The multiplier was meant to push the threshold lower (more aggressive positive predictions); but iter 8's model produced a much higher cal threshold (0.56 instead of 0.21), so 0.56 × 0.85 = 0.48 was actually higher than iter 7's 0.21, capturing fewer test positives. | `git checkout model.py` after the run; SAFETY_MARGIN logic removed |
-| **9** | TWO changes: `TARGET_RECALL` 0.995→1.0 + `CALIBRATION_BATCHES` 60→200 | recall fell to 0.891 vs iter 7's 0.937. Confounded change; can't attribute regression to either knob individually. | `git checkout model.py` after the run; both changes removed |
+| **8** | added `SAFETY_MARGIN=0.85` multiplier on the calibrated threshold | recall *dropped* from iter 7's 0.937 to 0.848. The multiplier was meant to push the threshold lower; but iter 8's model produced a much higher cal threshold (0.56 instead of 0.21), so 0.56 × 0.85 = 0.48 was actually higher than 0.21, capturing fewer test positives. | `git checkout model.py`; SAFETY_MARGIN logic removed |
+| **9** | TWO changes: `TARGET_RECALL` 0.995→1.0 + `CALIBRATION_BATCHES` 60→200 | recall fell to 0.891 vs iter 7's 0.937. Confounded; can't attribute regression to either knob. | `git checkout model.py`; both changes removed |
+| **22** | `TOTAL_EPOCHS` 10→15 (+5 fine-tune passes) | Training loss hit 0.25 (overfit); holdout min-threshold jumped to 0.660; recall fell to 0.754, AUC fell to 0.885. More epochs hurt on B4. | `git checkout model.py`; reverted to 10 epochs, switched to B4 backbone |
 
-**Caveat in the trace:** `run.py` logs both rows with `status=keep` (its default), even though I reverted `model.py`. The "real" status is `discard` for both; the row in `results.tsv` is preserved as a record of what was tried. Documented in [experiment_log_bundle.md](experiment_log_bundle.md) and the Week-4 [experiment_matrix.md](../week4/experiment_matrix.md).
+**Caveat in the trace:** `run.py` logs all three rows with `status=keep` (its default), even though `model.py` was reverted each time. The "real" status is `discard`; the rows in `results.tsv` are preserved as records of what was tried.
 
 ## Crash — 1 attempt
 

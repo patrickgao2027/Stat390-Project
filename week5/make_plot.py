@@ -45,6 +45,10 @@ ITER_LABELS = [
     "19: pct 3",
     "20: seed=67 r1",
     "21: seed=67 r2",
+    "22: 15ep discard",
+    "23: B4 r1",
+    "24: B4 r2",
+    "25: B4 r3",
 ]
 
 # Mark the run-status of each iter (matches keep_discard_crash_summary.md)
@@ -56,13 +60,16 @@ STATUS = {
     14: "keep", 15: "keep", 16: "keep",
     17: "keep", 18: "keep", 19: "keep",
     20: "keep", 21: "keep",
+    22: "discard",
+    23: "keep", 24: "keep", 25: "keep",
 }
 
 CONTROLLED_BLOCKS = {
     "pos_weight (Wk4)": (10, 13),
     "holdout cal (Wk5 p1)": (14, 16),
     "percentile est. (Wk5 p1.5)": (17, 19),
-    "determinism test (Wk5 p2)": (20, 21),
+    "determinism (Wk5 p2)": (20, 21),
+    "B4 backbone (Wk5 p3)": (23, 25),
 }
 
 
@@ -86,7 +93,7 @@ def make_metric_trajectory(df):
                            label=status)
     ax_auc.axhline(0.85, color="red", linestyle="--", linewidth=1, label="target ≥ 0.85")
     ax_auc.set_ylabel("ROC-AUC")
-    ax_auc.set_title("ROC-AUC trajectory across the autonomous block (iters 1–21)")
+    ax_auc.set_title("ROC-AUC trajectory across the autonomous block (iters 1–25)")
     ax_auc.set_ylim(0.75, 0.92)
     ax_auc.grid(alpha=0.3)
     ax_auc.legend(loc="lower right", fontsize=9)
@@ -105,7 +112,7 @@ def make_metric_trajectory(df):
     ax_rec.axhline(0.95, color="red", linestyle="--", linewidth=1, label="target ≥ 0.95")
     ax_rec.set_ylabel("Recall")
     ax_rec.set_xlabel("Iteration")
-    ax_rec.set_title("Recall trajectory across the autonomous block (iters 1–21)")
+    ax_rec.set_title("Recall trajectory across the autonomous block (iters 1–25)")
     ax_rec.set_ylim(0.70, 1.00)
     ax_rec.grid(alpha=0.3)
     ax_rec.legend(loc="lower right", fontsize=9)
@@ -114,7 +121,7 @@ def make_metric_trajectory(df):
                         xytext=(0, 8), ha="center", fontsize=7)
 
     # Shade the controlled-experiment sub-blocks on both axes
-    block_colors = ["#fff2cc", "#dcedc8", "#cfe2f3", "#f3e5f5"]
+    block_colors = ["#fff2cc", "#dcedc8", "#cfe2f3", "#f3e5f5", "#fce4ec"]
     for (label, (start, end)), bcolor in zip(CONTROLLED_BLOCKS.items(), block_colors):
         for ax in (ax_auc, ax_rec):
             ax.axvspan(start - 0.4, end + 0.4, color=bcolor, alpha=0.6, zorder=0)
@@ -201,7 +208,7 @@ def make_keep_discard_crash(df):
         "keep (committed)": sum(1 for s in STATUS.values() if s == "keep"),
         "baseline": sum(1 for s in STATUS.values() if s == "baseline"),
         "discard (reverted)": sum(1 for s in STATUS.values() if s == "discard"),
-        "crash (worktree path issue, recovered)": 1,
+        "crash (recovered)": 1,
     }
 
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -211,7 +218,7 @@ def make_keep_discard_crash(df):
 
     bars = ax.bar(labels, values, color=colors, edgecolor="black")
     ax.set_ylabel("Count")
-    ax.set_title("Run outcomes across the autonomous block (n=22 attempts)")
+    ax.set_title("Run outcomes across the autonomous block (n=26 attempts)")
     ax.grid(axis="y", alpha=0.3)
     for bar, v in zip(bars, values):
         ax.text(bar.get_x() + bar.get_width() / 2, v + 0.3, str(v),

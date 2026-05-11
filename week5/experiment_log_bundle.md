@@ -2,8 +2,8 @@
 
 **Project:** ISIC binary skin lesion classifier (benign vs. malignant)
 **Author:** Patrick Gao
-**Block window:** Iter 1 (baseline) → Iter 21 (determinism verification, completed)
-**Iterations logged:** 21 successfully completed + 1 crash (recovered) = 22 attempts
+**Block window:** Iter 1 (baseline) → Iter 25 (EfficientNet-B4 rep 3, completed)
+**Iterations logged:** 25 successfully completed + 1 crash (recovered) = 26 attempts
 
 This file is the single source of truth for every run in the autonomous block. Every row in `results.tsv` is reflected here, plus the one run that crashed before logging and the operational events that are not visible from `results.tsv` alone.
 
@@ -35,6 +35,10 @@ This file is the single source of truth for every run in the autonomous block. E
 | 19 | 9d1cc2d | keep | rep 3/3 | 0.8909 | 0.7491 | 0.5290 | 3681 | Recall std 0.014 vs 0.039 with min estimator — **2.8× tighter.** Mean recall fell 0.92→0.77 (tradeoff quantified). |
 | 20 | a73de59 | keep | full PyTorch+CUDA+TF determinism (seed=67, cudnn deterministic) + revert to TARGET_RECALL=0.995 | 0.8962 | 0.8245 | 0.4917 | 3552 | Threshold=0.560 (min of 157 holdout positives). Seed 67 produced a model where all positives score ≥ 0.56 → recall lower than unseeded min estimator mean (0.92). |
 | 21 | 7965f2b | keep | determinism verification — identical code, no changes | 0.8936 | 0.8498 | 0.4719 | 3673 | Threshold=0.603. **Determinism NOT achieved**: losses differed from epoch 1 (1.0396 vs 1.0288). Root cause: `prepare.py` calls `tf.data.shuffle()` before `model.py` is imported, so `tf.random.set_seed()` in model.py runs too late. Full determinism requires modifying the frozen `prepare.py`. |
+| 22 | 4af50e1 | **discard** (logged as keep) | TOTAL_EPOCHS 10→15 (+5 fine-tune passes) | 0.8852 | 0.7536 | 0.5280 | 5513 | Single variable: epochs. **Regression** — training loss hit 0.25 (overfit); holdout min-threshold jumped to 0.660; recall fell to 0.754. Reverted via `git checkout model.py`. Same keep/discard log mismatch as iters 8/9. |
+| 23 | 9e320ca | keep | backbone B2 → B4 (19M params vs 9M, single-variable vs iters 14-16) rep 1/3 | 0.8963 | **0.9540** | 0.3802 | 6640 | Threshold=0.084 — B4 scores all holdout positives ≥ 8.4%, far lower than B2's ~22% min. First run to reproducibly target recall ≥ 0.95. |
+| 24 | 9e320ca | keep | backbone B4, rep 2/3 | 0.8975 | **0.9534** | 0.3825 | 6609 | Threshold=0.111. Both reps 1-2 above 0.95. |
+| 25 | 9e320ca | keep | backbone B4, rep 3/3 | 0.8937 | 0.9178 | 0.4233 | 6512 | Threshold=0.223. Rep 3 fell back below 0.95. **B4 mean recall 0.942 ± 0.021** (n=3) vs B2 0.920 ± 0.039 — real improvement, tighter variance, but not yet reproducibly ≥ 0.95. |
 
 `(parent)` in the commit column means `model.py` had uncommitted changes when the run logged — `run.py` records the parent commit hash, so several rows share `7a57f2c`. The "what changed" column is the source of truth for what code was actually used.
 
@@ -43,16 +47,19 @@ This file is the single source of truth for every run in the autonomous block. E
 | Status | Count | Iters |
 |---|---:|---|
 | Baseline | 1 | 1 |
-| Keep (committed and pushed) | 18 | 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 |
-| Discard (logged as `keep` by `run.py` default, but `model.py` reverted via `git checkout`) | 2 | 8, 9 |
+| Keep (committed and pushed) | 21 | 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25 |
+| Discard (logged as `keep` by `run.py` default, but `model.py` reverted via `git checkout`) | 3 | 8, 9, 22 |
 | Crash (no row in `results.tsv`) | 1 | iter 7 first attempt — `FileNotFoundError` from worktree |
-| **Total attempts** | **22** | |
+| **Total attempts** | **26** | |
 
 The status mismatch on iters 8 and 9 (logged as `keep` but reality is `discard`) is itself a documented bit of trace integrity — the experiment-result matrix corrects the record.
 
 ## Git / version history (block commits, in order)
 
 ```
+9e320ca → a417ead   iters 24-25: B4 reps 2-3 — recall 0.953/0.918, mean 0.942±0.021
+4af50e1 → 9e320ca   iter 23: backbone B2→B4, recall 0.954 (first rep crosses 0.95)
+f9fa804 → 4af50e1   Week 5 final: iters 20-21 determinism test, updated deliverables
 7965f2b → f9fa804   iters 20-21 results: determinism test — NOT achieved
 a73de59 → 7965f2b   iter 20: full RNG seeding (seed=67, cudnn deterministic) + revert TARGET_RECALL=0.995
 155d0d3 → a73de59   Week 5 deliverables (iters 1-19 trace)
@@ -75,7 +82,7 @@ Every commit is on `main` and pushed to `github.com:patrickgao2027/Stat390-Proje
 - Hardware: RTX 4050 (laptop), 6 GiB VRAM, batch size 16
 - Training time per iter (deep learning runs): **~22–60 min** (avg ~55 min for B2)
 - GPU thermals during a 3-hour block: **63 °C, 39 W (~⅓ TDP), 98 % util** — well within healthy range
-- Total wall-clock spent on this block (iters 6–21, the autonomous-block portion): roughly **~16 hours of training** + ~1 hour of agent overhead (file edits, plotting, deliverable writing, git)
+- Total wall-clock spent on this block (iters 6–25, the autonomous-block portion): roughly **~22 hours of training** + ~1 hour of agent overhead (file edits, plotting, deliverable writing, git). B4 runs take ~110 min each vs ~60 min for B2.
 - Disk: `results.tsv` (~2 KB), training has no checkpoint persistence between runs (each run trains from ImageNet weights)
 - Network: ~0 (no external data downloads)
 

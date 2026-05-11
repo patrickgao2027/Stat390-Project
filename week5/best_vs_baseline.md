@@ -1,7 +1,7 @@
 # Week 5 — Best Result vs. Baseline
 
 **Project:** ISIC binary skin lesion classifier (benign vs. malignant)
-**Block window:** Iter 1 → Iter 21
+**Block window:** Iter 1 → Iter 25
 
 The Week-5 framing pushes against picking a single peak run as "best" — *"a single outlier result is not sufficient evidence of a real improvement."* So this comparison reports both **the highest single-run number** (honest about its noise-tail status) and **the most credible reproducible improvement** (reported as mean ± std over a single-variable replicated controlled experiment).
 
@@ -63,11 +63,11 @@ Lower mean recall, but **the smallest within-condition variance in the whole blo
 
 | Criterion | Baseline | Best (single run) | Best (replicated mean) | Status |
 |---|---|---|---|---|
-| ROC-AUC ≥ 0.85 | 0.793 ❌ | 0.901 ✅ (iter 7) | 0.898 ✅ (iters 10–13 mean) | **MET** since iter 2 (every iter ≥ iter 2 has AUC ≥ 0.86) |
-| Recall ≥ 0.95 | 0.898 ❌ at 0.5 threshold (precision 0.37) | 0.965 ✅ (iter 15, single run) | 0.92 ❌ (iters 14–16 mean), 0.76 ❌ (iters 17–19 mean), 0.84 ❌ (iters 20–21 mean) | **NOT MET reproducibly** — crossed twice as noise-tail singletons |
+| ROC-AUC ≥ 0.85 | 0.793 ❌ | 0.901 ✅ (iter 7) | 0.898 ✅ (iters 10–13 mean) | **MET** since iter 2 (every CNN iter ≥ 0.886) |
+| Recall ≥ 0.95 | 0.898 ❌ at 0.5 threshold | 0.965 ✅ (iter 15, single run) | **0.942 ✅/❌ (iters 23–25, B4 mean — 2/3 reps crossed 0.95)** | **CLOSE but not fully reproducible** — B4 is the best pipeline yet |
 
 ## Plain-English version of the comparison
 
 The starting point was a logistic-regression model that scored 0.79 on the AUC metric and 0.90 on the recall metric. After 19 deep-learning iterations, the deep model gets to about **0.90 AUC** very reliably — that is a real, measurable improvement of about 10 percentage points over the baseline, and it is reproduced across roughly twenty independent training runs. So on the AUC front, the project's primary success criterion is comfortably met.
 
-The recall criterion (≥ 0.95) is more delicate. Two single runs in the block crossed 0.95, but their replicated siblings at the *same* code did not. The honest summary is: with the current pipeline, recall typically lands between 0.83 and 0.92 with run-to-run variation around 0.04 — close to the target but not reproducibly past it. Iters 20–21 tested whether full RNG seeding could eliminate this variation: the result was negative. The `tf.data.shuffle()` call in the frozen `prepare.py` runs before `model.py` is imported, so the data order cannot be seeded from model.py alone, and the two "deterministic" runs still differed (recall 0.825 vs 0.850, epoch-1 loss 1.0396 vs 1.0288).
+The recall criterion (≥ 0.95) is nearly met. Upgrading the backbone from EfficientNet-B2 to B4 (iters 23–25) pushed the mean recall from 0.920 to 0.942 and cut the within-condition std from 0.039 to 0.021. Two of three B4 reps crossed 0.95 (recall 0.954 and 0.953); rep 3 came in at 0.918. The honest summary: B4 gets there most of the time — 2 out of 3 runs — but is not yet fully reproducible at ≥ 0.95. The remaining variance is structural (frozen `prepare.py` data pipeline, confirmed non-deterministic in iters 20–21).

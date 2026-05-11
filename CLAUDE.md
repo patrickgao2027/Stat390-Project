@@ -24,7 +24,7 @@ C:\Users\Owner\anaconda3\python.exe -u run.py "description" --baseline          
 C:\Users\Owner\anaconda3\python.exe -u run.py "description" --discard                 # status=discard
 ```
 
-Training time on the RTX 4050: ~50–60 min for EfficientNet-B2 at 10 epochs, ~22–45 min for B0/AlexNet. Plan budgets accordingly.
+Training time on the RTX 4050: **~110 min for EfficientNet-B4** (current backbone) at 10 epochs, ~60 min for B2, ~22–45 min for B0/AlexNet. Plan budgets accordingly. Do NOT try to run more than 10 epochs on B4 — iter 22 showed 15 epochs causes overfitting (recall drops to 0.75).
 
 `results.tsv` columns: `experiment` (short git hash at run time), `roc_auc`, `accuracy`, `recall`, `precision`, `train_time_s`, `status`, `description`. Note: the commit hash logged is the *parent* commit at run time — uncommitted `model.py` changes still log against the parent's hash, so "keep" rows can share a hash with "baseline" rows.
 
@@ -70,24 +70,30 @@ run.py (frozen)      ──────►  fit, evaluate, log to results.tsv
 ## Other directories
 
 - **`week4/`** — Week 4 deliverable artifacts: controlled-experiment writeup, results matrix, metric-over-time plot, error taxonomy, failure analysis memo, and `make_plot.py` to regenerate plots from `results.tsv`.
-- **`week5/`** — Week 5 deliverable artifacts: full experiment log bundle (all 21 attempts), keep/discard/crash summary, best-vs-baseline comparison, "what actually worked" memo, and `make_plot.py` for metric trajectory + controlled-experiment + outcome bar charts. Run `python week5/make_plot.py` from the project root to regenerate the three PNGs.
+- **`week5/`** — Week 5 deliverable artifacts: full experiment log bundle (all 26 attempts), keep/discard/crash summary, best-vs-baseline comparison, "what actually worked" memo, and `make_plot.py` for metric trajectory + controlled-experiment + outcome bar charts. Run `python week5/make_plot.py` from the project root to regenerate the three PNGs.
 - **`skin-lesion-autoresearch/`** — earlier exploratory scaffold (separate `src/`, `models/`, `results/` trees). **Not imported by the live loop** in `run.py` — only kept as historical reference. Don't import from it; copy code in if useful.
 
-## Current project state (as of iter 21)
+## Current project state (as of iter 25)
 
-`results.tsv` has 21 rows (iter 1 baseline → iter 21). Key findings so far:
+`results.tsv` has 25 rows (iter 1 baseline → iter 25). Current backbone: **EfficientNet-B4**.
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| ROC-AUC ≥ 0.85 | ✅ **Met** since iter 2 | Every CNN iter sits in [0.886, 0.901]; iters 10–13 mean 0.898 ± 0.003 |
-| Recall ≥ 0.95 | ❌ **Not reproducibly met** | Crossed twice as single-run noise tails (iters 13, 15); mean ~0.83–0.92 depending on estimator |
+| ROC-AUC ≥ 0.85 | ✅ **Met** since iter 2 | B4 (iters 23–25): 0.896 ± 0.002 |
+| Recall ≥ 0.95 | ⚠️ **Close — 2/3 reps crossed it** | B4 mean 0.942 ± 0.021 (iters 23–25); vs B2 mean 0.920 ± 0.039 (iters 14–16) |
 
-**Open problem — threshold estimator variance:**
-- `min(positive_prob)` estimator (TARGET_RECALL=0.995): mean recall ~0.92, std ~0.04 — high mean, noisy
-- 5th-percentile estimator (TARGET_RECALL=0.95): mean recall ~0.77, std ~0.014 — stable but wrong operating point
-- Full RNG seeding (iters 20–21): didn't achieve determinism (data shuffle is set in `prepare.py` before model.py runs); recall still varied 0.825 vs 0.850 across identical runs
+**What worked / failed (full history):**
+- ✅ LR → pretrained CNN (B2): AUC +0.10, every iter from 2 onward ≥ 0.886
+- ✅ Phase-3 threshold calibration (iter 6): recall +0.09, no AUC cost
+- ✅ 5th-percentile estimator (iters 17–19): recall std cut 2.8× (but mean recall fell to 0.77)
+- ✅ B2 → B4 backbone (iters 23–25): recall mean +0.022, std halved (0.021 vs 0.039)
+- ❌ pos_weight 10→20: Δ < within-condition noise
+- ❌ SAFETY_MARGIN multiplier: regressed (multiplicative on noisy baseline)
+- ❌ Holdout cal source swap: widened variance (wrong root cause)
+- ❌ 15 epochs on B4 (iter 22): overfit — training loss 0.25, threshold 0.66, recall 0.75
+- ❌ Full RNG seeding (iters 20–21): data shuffle in frozen `prepare.py` runs before model.py imports; determinism not achievable from model.py
 
-**Next lever to try:** tune the percentile between min and 5th-pct (e.g. TARGET_RECALL=0.98 ≈ 2nd–3rd percentile of ~157 holdout positives) to find a tradeoff with lower std than min but higher mean recall than 5th-pct. Run 3 replicates to measure.
+**Next lever:** tune `TARGET_RECALL` between 0.995 (min) and 0.95 (5th-pct) on B4 — e.g. 0.99 gives the 2nd-lowest of 141 holdout positives, more stable than min while staying near the high-recall operating point. Run 3 reps.
 
 ## Deployment Target (Stretch)
 
