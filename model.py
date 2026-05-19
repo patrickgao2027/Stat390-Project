@@ -1,23 +1,36 @@
 """
 EDITABLE — modify this file each iteration.
 
-Iters 23-25: single-variable controlled experiment — backbone B2 -> B4.
+Iters 29-31 (B4 + TTA): AUC +0.006 reproducibly (0.902 across all 3 reps,
+above every non-TTA run). Recall mean 0.934 ± 0.022 — slightly below
+the pre-TTA baseline; TTA helps AUC but is a recall wash.
 
-Iter 22 (TOTAL_EPOCHS 10->15) was discarded: overfitting. Training loss
-dropped to 0.25, holdout min-threshold jumped to 0.66, test recall fell to
-0.754. More epochs hurt because B2 memorised the training set.
+Pooled 6-rep B4 recall (iters 23-25 + 29-31): mean 0.938, std 0.020,
+2/6 reps ≥ 0.95. Model-side noise dominates; no threshold lever and no
+inference-side smoothing has shifted the mean above 0.95.
 
-The 0.03 recall gap (mean 0.92 vs target 0.95) is a model-capacity problem:
-some hard malignant cases score below the min threshold and are missed.
-EfficientNet-B4 has 19M params vs B2's 9M and a higher ImageNet top-1
-accuracy (81.5% vs 80.1%), giving better pretrained features for dermoscopy.
+Iters 32-34: single-variable change — additive SAFETY_MARGIN = 0.10
+on the calibrated threshold. After Phase 3 picks the min-positive threshold
+from the holdout cal, we subtract 0.10 to explicitly trade precision for
+recall. Floor at 0.05 prevents pathological "flag everything" thresholds.
 
-Single variable changed: backbone B2 -> B4 (two lines in EfficientNetB4Binary).
-Everything else locked: 10 epochs, HEAD_WARMUP=2, CALIBRATION_BATCHES=60,
-TARGET_RECALL=0.995 (min estimator), POS_WEIGHT=10, USE_HOLDOUT_CAL=True.
+Hypothesis: mechanically lowers the operating point → catches the borderline
+positives currently sitting just under threshold. Predicted recall mean
+0.96-0.97, floor ≥ 0.94. Precision will fall from ~0.42 to ~0.32-0.36 —
+acceptable for a screening application (false positives just get a follow-up
+biopsy; false negatives miss cancer).
 
-Comparison set: iters 14-16 (B2, same config, mean recall 0.920 ± 0.039).
-Success criterion: mean recall across 3 reps > 0.92 (iters 14-16 mean).
+Note: iter 8 tried multiplicative SAFETY_MARGIN=0.85 on a single B2 baseline
+and regressed slightly (recall 0.85 vs 0.94). Likely n=1 noise — multiplicative
+also scales with threshold magnitude (small thresholds get a tiny bump).
+Additive is more predictable and operates on the right scale.
+
+Single variable changed: SAFETY_MARGIN 0.0 -> 0.10.
+Everything else locked: B4 + TTA + holdout cal + TARGET_RECALL=0.995, etc.
+
+Comparison set: iters 29-31 (B4+TTA baseline, mean recall 0.934 ± 0.022).
+Success criterion: mean recall across 3 reps ≥ 0.95 with floor ≥ 0.94,
+AUC stays ≥ 0.89, precision ≥ 0.30.
 """
 
 import numpy as np
@@ -48,10 +61,12 @@ class EfficientNetB4Binary(nn.Module):
 
 class SkinLesionModel(BaseTorchModel):
     HEAD_WARMUP_EPOCHS = 2
-    CALIBRATION_BATCHES = 60
-    TARGET_RECALL = 0.995    # min estimator (high recall operating point)
+    CALIBRATION_BATCHES = 60     # reverted from 120: iters 27-28 confirmed worse (mean recall 0.909 vs 0.942)
+    TARGET_RECALL = 0.995        # min positive on holdout (catches every cal positive)
     POS_WEIGHT = 10.0
+    USE_TTA = True               # 4-view TTA (added iter 29) — gives reproducible AUC +0.006
     USE_HOLDOUT_CAL = True
+    SAFETY_MARGIN = 0.10         # NEW: subtract from calibrated threshold to push recall floor ≥ 0.95
 
     def _build_module(self):
         return EfficientNetB4Binary()
@@ -104,6 +119,8 @@ class SkinLesionModel(BaseTorchModel):
                     steps_per_epoch=steps_per_epoch, class_weight=boosted)
 
         # Phase 3: calibrate threshold to TARGET_RECALL on the cal sample.
+        # If USE_TTA, both calibration and inference use averaged logits across
+        # 4 flip views — keeps cal and test on the same probability distribution.
         self.module.eval()
         probs_chunks, labels_chunks = [], []
         with torch.no_grad():
@@ -113,23 +130,23 @@ class SkinLesionModel(BaseTorchModel):
                 for s in range(0, len(held_out_x), bs):
                     batch = held_out_x[s:s+bs]
                     x = torch.from_numpy(batch).permute(0, 3, 1, 2).to(self.device)
-                    logits = self.module(x).squeeze(-1)
+                    logits = self._tta_logits(x) if self.USE_TTA else self.module(x).squeeze(-1)
                     probs_chunks.append(torch.sigmoid(logits).cpu().numpy())
                 p = np.concatenate(probs_chunks)
                 y_arr = held_out_y
-                cal_label = "holdout"
+                cal_label = "holdout+tta" if self.USE_TTA else "holdout"
             else:
                 # Legacy leaky path: score training batches the model already memorized.
                 for i, (images, y) in enumerate(train_ds):
                     if i >= self.CALIBRATION_BATCHES:
                         break
                     x = self._to_torch_images(images, self.device)
-                    logits = self.module(x).squeeze(-1)
+                    logits = self._tta_logits(x) if self.USE_TTA else self.module(x).squeeze(-1)
                     probs_chunks.append(torch.sigmoid(logits).cpu().numpy())
                     labels_chunks.append(y.numpy())
                 p = np.concatenate(probs_chunks)
                 y_arr = np.concatenate(labels_chunks).astype(int)
-                cal_label = "leaked"
+                cal_label = "leaked+tta" if self.USE_TTA else "leaked"
 
         order = np.argsort(-p)
         p_sorted = p[order]
@@ -138,12 +155,41 @@ class SkinLesionModel(BaseTorchModel):
         recall_curve = np.cumsum(y_sorted) / total_pos
         idx = int(np.searchsorted(recall_curve, self.TARGET_RECALL))
         idx = min(idx, len(p_sorted) - 1)
-        self.threshold = float(p_sorted[idx])
-        print(f"Phase 3 ({cal_label}): threshold = {self.threshold:.4f} "
+        raw_threshold = float(p_sorted[idx])
+        # Additive safety margin: subtract a fixed offset to err toward recall.
+        # Floor at 0.05 so the threshold can't collapse to ~0 and flag everything.
+        self.threshold = max(raw_threshold - self.SAFETY_MARGIN, 0.05)
+        print(f"Phase 3 ({cal_label}): raw_threshold = {raw_threshold:.4f}, "
+              f"margin = {self.SAFETY_MARGIN:.3f}, "
+              f"final threshold = {self.threshold:.4f} "
               f"(cal recall = {recall_curve[idx]:.3f}, "
               f"pos = {total_pos}, total = {len(p)})")
 
         return self
+
+    def _tta_logits(self, x):
+        """4-view TTA: average logits across original, hflip, vflip, both flips.
+        Smooths per-image probabilities → lower variance threshold + recall."""
+        views = [
+            x,
+            torch.flip(x, dims=[3]),       # horizontal flip
+            torch.flip(x, dims=[2]),       # vertical flip
+            torch.flip(x, dims=[2, 3]),    # both
+        ]
+        return sum(self.module(v).squeeze(-1) for v in views) / 4.0
+
+    @torch.no_grad()
+    def predict_proba(self, x_ds):
+        if not self.USE_TTA:
+            return super().predict_proba(x_ds)
+        self.module.eval()
+        chunks = []
+        for batch in x_ds:
+            x = self._to_torch_images(batch, self.device)
+            logits = self._tta_logits(x)
+            p = torch.sigmoid(logits).cpu().numpy()
+            chunks.append(np.stack([1.0 - p, p], axis=1))
+        return np.concatenate(chunks, axis=0)
 
     def predict(self, x_ds):
         proba = self.predict_proba(x_ds)

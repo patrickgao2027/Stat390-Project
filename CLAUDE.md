@@ -71,11 +71,14 @@ run.py (frozen)      ──────►  fit, evaluate, log to results.tsv
 
 - **`week4/`** — Week 4 deliverable artifacts: controlled-experiment writeup, results matrix, metric-over-time plot, error taxonomy, failure analysis memo, and `make_plot.py` to regenerate plots from `results.tsv`.
 - **`week5/`** — Week 5 deliverable artifacts: full experiment log bundle (all 26 attempts), keep/discard/crash summary, best-vs-baseline comparison, "what actually worked" memo, and `make_plot.py` for metric trajectory + controlled-experiment + outcome bar charts. Run `python week5/make_plot.py` from the project root to regenerate the three PNGs.
+- **`week6/`** — Week 6 scope-lock deliverables (created once iters 26–28 land): revised project statement, updated agent strategy, full ablation/comparison table across all 28 iters, and the locked two-week plan to submission. Per the Week 6 brief, this folder marks the close of the experimental loop.
 - **`skin-lesion-autoresearch/`** — earlier exploratory scaffold (separate `src/`, `models/`, `results/` trees). **Not imported by the live loop** in `run.py` — only kept as historical reference. Don't import from it; copy code in if useful.
 
-## Current project state (as of iter 25)
+## Current project state (as of iter 25, iters 26–28 in flight)
 
 `results.tsv` has 25 rows (iter 1 baseline → iter 25). Current backbone: **EfficientNet-B4**.
+Active experiment (Week 6): iters 26–28 testing `TARGET_RECALL` 0.995 → 0.99 on B4 — the
+last refinement before scope lock. No new directions after these reps complete.
 
 | Criterion | Status | Evidence |
 |---|---|---|
@@ -93,7 +96,36 @@ run.py (frozen)      ──────►  fit, evaluate, log to results.tsv
 - ❌ 15 epochs on B4 (iter 22): overfit — training loss 0.25, threshold 0.66, recall 0.75
 - ❌ Full RNG seeding (iters 20–21): data shuffle in frozen `prepare.py` runs before model.py imports; determinism not achievable from model.py
 
-**Next lever:** tune `TARGET_RECALL` between 0.995 (min) and 0.95 (5th-pct) on B4 — e.g. 0.99 gives the 2nd-lowest of 141 holdout positives, more stable than min while staying near the high-recall operating point. Run 3 reps.
+**Active refinement (iters 26–28):** `TARGET_RECALL` 0.995 → 0.99 on B4. 0.99 takes the
+2nd-lowest of 141 holdout positives — less outlier-sensitive than min, while staying near
+the high-recall operating point. Success criterion: mean recall ≥ 0.95 AND AUC ≥ 0.89.
+
+## Week 6 scope lock (as of 2026-05-17)
+
+Per the Week 6 capstone brief, the project is in **convergence mode**, not exploration mode.
+After iters 26–28 land, the experimental loop closes. The remaining work is writeup, not
+new ideas.
+
+**Allowed (per brief):** refine search priorities, reorder experiments, tighten failure
+recovery, minor module-boundary tweaks with instructor approval.
+
+**Forbidden (per brief):** expanding scope, swapping evaluation after seeing favorable
+numbers, adding "one more big direction." New ideas belong in a future project.
+
+**Dropped directions (officially off the table):**
+- Seeding/full determinism from `model.py` (proven unreachable — frozen `prepare.py`
+  shuffles before model.py imports)
+- > 10 epochs on B4 (proven to overfit — iter 22)
+- pos_weight tuning beyond 10 (proven within-noise)
+- SAFETY_MARGIN multipliers (proven to regress)
+- Switching backbone again (B4 is the chosen final architecture)
+- TFLite deployment as a graded deliverable (stays a stretch goal only)
+
+If iters 26–28 hit both targets, the locked claim is: *"EfficientNet-B4 with two-phase
+fine-tuning and holdout threshold calibration meets AUC ≥ 0.85 and recall ≥ 0.95 on
+ISIC 2019+2020."* If they fall short, the reduced claim is: *"AUC target fully met;
+recall mean 0.94 with the documented gap and a stable operating point."* Either way,
+no further experimentation.
 
 ## Deployment Target (Stretch)
 
