@@ -17,3 +17,7 @@ challenge-2020-training_metadata_2026-04-09.csv
 .claude/
 __pycache__/
 *.pyc
+
+### model checkpoints (too large for git; produced by SAVE_CHECKPOINT=True)
+*.pt
+model_checkpoint*.pt
