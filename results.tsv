@@ -33,3 +33,6 @@ a73de59	0.896167	0.815890	0.824525	0.491678	3551.93	keep	Week5: full determinism
 554a8e8	0.902941	0.685386	0.974466	0.360184	5566.54	keep	B4 + TTA + SAFETY_MARGIN=0.10 rep 1 -- 32nd iteration
 554a8e8	0.900719	0.755956	0.926960	0.418218	5941.48	keep	B4 + TTA + SAFETY_MARGIN=0.10 rep 2 -- 33rd iteration
 554a8e8	0.903993	0.734844	0.955760	0.399578	5887.48	keep	B4 + TTA + SAFETY_MARGIN=0.10 rep 3 -- 34th iteration
+69e1e05	0.902089	0.712029	0.967637	0.380502	5720.29	keep	best-of-3 weight-save run 1 -- 35th iteration
+69e1e05	0.891884	0.681078	0.967043	0.356229	6000.63	keep	best-of-3 weight-save run 2 -- 36th iteration
+69e1e05	0.902089	0.712029	0.967637	0.380502	0.75	keep	deployment verification -- checkpoint load test

@@ -1,0 +1,7 @@
+After conversion, copy skin_lesion_b4.tflite into this folder:
+
+    cp ../../../skin_lesion_b4.tflite skin_lesion_b4.tflite
+
+The .tflite file (~40 MB after fp16 quantization) is gitignored — see
+project root .gitignore. The build.gradle.kts in this app already sets
+`androidResources { noCompress += "tflite" }` so TFLite can mmap it.

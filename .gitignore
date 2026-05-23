@@ -21,3 +21,14 @@ __pycache__/
 ### model checkpoints (too large for git; produced by SAVE_CHECKPOINT=True)
 *.pt
 model_checkpoint*.pt
+
+### deployment build artifacts (produced by deployment/convert.py)
+deployment/skin_lesion_b4.onnx
+deployment/skin_lesion_b4.tflite
+deployment/tflite_build/
+deployment/android/app/src/main/assets/skin_lesion_b4.tflite
+deployment/android/.gradle/
+deployment/android/build/
+deployment/android/app/build/
+deployment/android/local.properties
+deployment/android/.idea/

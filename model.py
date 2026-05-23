@@ -75,7 +75,7 @@ class SkinLesionModel(BaseTorchModel):
     # Week 7 deployment artifact — weight-save best-of-N for S22+ TFLite shipping.
     CHECKPOINT_PATH = "model_checkpoint.pt"
     SAVE_CHECKPOINT = True       # after fit(), save state_dict if better than existing
-    LOAD_CHECKPOINT = False      # if True, load checkpoint at start of fit() and skip training
+    LOAD_CHECKPOINT = True       # DEPLOY MODE: load model_checkpoint.pt, skip training, deterministic inference
 
     def _build_module(self):
         return EfficientNetB4Binary()

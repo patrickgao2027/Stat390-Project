@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Skin Lesion Screener</string>
+    <string name="capture_and_analyze">Capture &amp; Analyze</string>
+    <string name="result_placeholder">Tap Capture &amp; Analyze to begin</string>
+    <string name="result_analyzing">Analyzing…</string>
+    <string name="result_error">Capture failed — please try again</string>
+    <string name="disclaimer">Screening aid only — not a diagnostic tool. Always consult a dermatologist for any concerning lesion.</string>
+</resources>
