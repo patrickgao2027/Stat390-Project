@@ -122,16 +122,18 @@ class SkinLesionClassifier(context: Context) {
         return outputBuffer[0][0]
     }
 
-    /** Normalize Bitmap pixels to float32 [0, 1] in NHWC order. */
+    /** Normalize Bitmap pixels to float32 [0, 1] in NHWC (interleaved) order.
+     *  Matches the TFLite model's input shape (1, 128, 128, 3) — the sanity
+     *  check in deployment/convert.py confirmed PyTorch and TFLite produce
+     *  identical outputs when fed this layout. */
     private fun bitmapToInputBuffer(bitmap: Bitmap) {
         inputBuffer.rewind()
         val pixels = IntArray(INPUT_SIZE * INPUT_SIZE)
         bitmap.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
         for (px in pixels) {
-            val r = ((px shr 16) and 0xff) / 255f
-            val g = ((px shr 8) and 0xff) / 255f
-            val b = (px and 0xff) / 255f
-            inputBuffer.putFloat(r); inputBuffer.putFloat(g); inputBuffer.putFloat(b)
+            inputBuffer.putFloat(((px shr 16) and 0xff) / 255f)   // R
+            inputBuffer.putFloat(((px shr 8)  and 0xff) / 255f)   // G
+            inputBuffer.putFloat((px          and 0xff) / 255f)   // B
         }
         inputBuffer.rewind()
     }

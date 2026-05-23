@@ -23,10 +23,11 @@ TFLITE_PATH = ROOT / "deployment" / "skin_lesion_b4.tflite"
 
 
 def preprocess(image_path: Path) -> np.ndarray:
-    """Mimic the prepare.py preprocessing: resize to 128×128, float32 in [0,1], NHWC."""
+    """Mimic the prepare.py preprocessing: resize to 128×128, float32 in [0,1],
+    return NHWC (matches the TFLite model's input layout)."""
     img = Image.open(image_path).convert("RGB").resize((128, 128), Image.BILINEAR)
-    arr = np.asarray(img, dtype=np.float32) / 255.0
-    return arr[None, ...]  # add batch dim → (1, 128, 128, 3)
+    arr = np.asarray(img, dtype=np.float32) / 255.0       # (128, 128, 3) NHWC
+    return arr[None, ...]                                  # (1, 128, 128, 3) NHWC
 
 
 def pytorch_prob(x_nhwc: np.ndarray) -> float:
@@ -34,7 +35,8 @@ def pytorch_prob(x_nhwc: np.ndarray) -> float:
     module = EfficientNetB4Binary()
     module.load_state_dict(ckpt["state_dict"])
     module.eval()
-    x_nchw = torch.from_numpy(x_nhwc).permute(0, 3, 1, 2)
+    # PyTorch backbone wants NCHW — transpose from the NHWC preprocess.
+    x_nchw = torch.from_numpy(x_nhwc).permute(0, 3, 1, 2).contiguous()
     with torch.no_grad():
         logits = module(x_nchw).squeeze(-1)
         p = torch.sigmoid(logits).item()
