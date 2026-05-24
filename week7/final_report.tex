@@ -1,0 +1,337 @@
+% Final Report — STAT 390 AutoResearch Capstone
+% NeurIPS 2024 template (4 pages).
+%
+% Requires neurips_2024.sty (download from https://media.neurips.cc/Conferences/NeurIPS2024/Styles.zip
+% and place neurips_2024.sty next to this file, or use Overleaf which has it preinstalled).
+%
+% Compile: pdflatex final_report.tex   (twice to resolve refs)
+
+\documentclass{article}
+
+% Use \usepackage[final]{neurips_2024} for the camera-ready (no line numbers).
+\usepackage[final]{neurips_2024}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+
+\title{Calibrated EfficientNet-B4 for Benign-vs-Malignant\\
+       Skin Lesion Screening on ISIC 2019+2020:\\
+       An AutoResearch Capstone Report}
+
+\author{%
+  Patrick Gao \\
+  Northwestern University \\
+  STAT 390 Capstone \\
+  \texttt{patrickgao765@gmail.com} \\
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We report on a 36-iteration AutoResearch loop that produced a calibrated
+binary skin-lesion classifier on the combined ISIC 2019+2020 dermoscopy
+datasets ($\approx$57,586 images, $\approx$5.3:1 benign:malignant imbalance).
+The final method --- an ImageNet-pretrained EfficientNet-B4 with two-phase
+fine-tuning, threshold calibration on a held-out training slice, 4-view
+test-time augmentation, and an additive operating-point safety margin ---
+achieves mean ROC-AUC $0.903 \pm 0.001$ and mean recall $0.952 \pm 0.023$
+across three independent training replicates, exceeding both
+pre-registered targets (AUC $\ge 0.85$, recall $\ge 0.95$). We
+characterize which loop directions produced stable value (architecture
+upgrades and threshold calibration), which produced noise or regression
+(post-hoc determinism, multiplicative safety margins, calibration-target
+tuning), and the structural variance floor imposed by the frozen data
+pipeline. The deployed checkpoint reproduces its metrics bit-for-bit and
+has been shipped end-to-end through PyTorch~$\to$~ONNX~$\to$~TFLite to
+an Android (Kotlin/CameraX/NNAPI) screening app for Samsung S22+.
+\end{abstract}
+
+\section{Introduction and AutoResearch contract}
+
+\textbf{Problem.} Given a dermoscopy image, output the probability that
+the imaged lesion is malignant and a binary screening decision. The
+target deployment is a smartphone screening aid, not a diagnostic device:
+missed cancers are catastrophic; false alarms are tolerable.
+
+\textbf{From topic to contract.} The instructor-supplied prompt asked for
+``the best possible binary classifier'' on ISIC 2019+2020 with a
+plain-English deliverable, on-device inference desired but not blocking.
+This was formalized into a falsifiable AutoResearch contract with three
+elements. (1) \textbf{Pre-registered targets:} ROC-AUC $\ge 0.85$ on
+the held-out test set and recall $\ge 0.95$ (chosen over precision to
+match the screening use case). (2) \textbf{Frozen interfaces:} two
+modules (\texttt{prepare.py}, \texttt{run.py}) are immutable; only
+\texttt{model.py} may be edited, and it must define \texttt{build\_model()}
+returning an object with \texttt{fit/predict/predict\_proba} that matches
+a fixed type signature. (3) \textbf{Mechanical iteration loop:} edit one
+variable, run \texttt{python run.py}, log one row to \texttt{results.tsv},
+decide keep/discard. The interface constraint --- not the targets ---
+is what made this an \emph{AutoResearch} project rather than a Kaggle-style
+score chase: it forced changes to be small, named, and individually
+revertible.
+
+\section{Method}
+
+\textbf{Data.} ISIC 2019 + ISIC 2020 dermoscopy challenge data, merged
+($\approx$57{,}586 images after filtering indeterminate diagnoses).
+\texttt{prepare.py} performs a stratified 80/20 train/test split seeded
+\texttt{RANDOM\_STATE=67}, subsamples training to 30\% for tractable
+iteration time, and yields \texttt{tf.data.Dataset} pipelines of
+$128\times128$ NHWC float32 images in $[0,1]$ along with the imbalance
+weights $\{0\!:\!1.0,~1\!:\!5.31\}$.
+
+\textbf{Architecture (locked at iter 32-34).} An EfficientNet-B4
+\citep{tan2019efficientnet} initialized with ImageNet weights from
+torchvision. The wrapper module bilinearly upsamples each $128\times128$
+input to $224\times224$, applies ImageNet normalization, and replaces
+the final 1000-class head with a single linear unit producing a logit.
+
+\textbf{Training protocol (locked).} Three phases per training run:
+(1) frozen backbone, train binary head only, 2 epochs, $\text{lr}=10^{-3}$;
+(2) unfreeze all, full fine-tune, 8 epochs, $\text{lr}=10^{-4}$;
+(3) threshold calibration. Loss is \texttt{BCEWithLogitsLoss} with
+$\texttt{pos\_weight}=10$ (an empirically chosen multiplier on the
+imbalance ratio that pushes the model toward higher recall during
+training). Optimizer is Adam in both phases.
+
+\textbf{Threshold calibration (locked).} The first 60 training batches
+($\approx 960$ images, $\approx 141$ malignant positives) are
+\emph{materialized before training} and \emph{excluded from gradient
+updates}. After fine-tuning, the model scores this held-out slice; we
+sort by predicted probability descending and select the lowest
+probability at which the cumulative-recall curve reaches
+$\texttt{TARGET\_RECALL}=0.995$. This raw threshold is reduced by an
+additive $\texttt{SAFETY\_MARGIN}=0.10$ (floored at 0.05). At inference
+we additionally apply 4-view test-time augmentation: original image,
+horizontal flip, vertical flip, both flips; the four logits are averaged
+before sigmoid.
+
+\textbf{Deployment artifact.} After training, the state dict, threshold,
+and raw threshold are persisted to \texttt{model\_checkpoint.pt} only if
+\texttt{raw\_threshold} exceeds the previously saved value (best-of-$N$
+selection). A separate code path loads this checkpoint, skips training,
+and runs deterministic inference in $\approx 0.75$\,s end-to-end.
+The same checkpoint is exported PyTorch~$\to$~ONNX~$\to$~TFLite (fp16)
+and bundled into an Android app; the TFLite output agrees with the
+PyTorch source bit-for-bit on a fixed dummy input.
+
+\section{Experimental protocol}
+
+\textbf{Loop design.} 36 iterations were executed sequentially. Each
+iteration: (1) name one variable to change in \texttt{model.py};
+(2) run \texttt{python -u run.py "<iter N description>"} ; (3) append
+one row to \texttt{results.tsv} containing \texttt{(commit\_hash,
+roc\_auc, accuracy, recall, precision, train\_time\_s, status,
+description)}; (4) decide keep / discard / replicate. From iter 14 onward,
+iterations were grouped in pre-declared 3-rep blocks before claims could
+be made about a variable's effect.
+
+\textbf{Evaluation.} A single test set, fixed by \texttt{RANDOM\_STATE=67}
+in the frozen \texttt{prepare.py}, was used throughout. The evaluator
+(\texttt{run.py}'s \texttt{evaluate()}) computed AUC, accuracy, recall,
+and precision identically across all 36 runs; it did not change during
+the project. Test metrics were logged every iteration; the test set was
+not opened in the sense of being mined for hyperparameters --- all
+hyperparameter decisions used the per-iteration holdout cal slice ---
+but the test results were visible to the experimenter, a design
+limitation we discuss in \S\ref{sec:limits}.
+
+\textbf{Stability standard.} A change was claimed as a real effect only
+if a 3-rep block of the new condition produced a between-condition mean
+difference exceeding within-condition standard deviation, and only if
+the direction of effect agreed with the explicit causal account for
+the change.
+
+\section{Results}
+
+\subsection{Final result}
+
+\begin{table}[h]
+\caption{Locked configuration (iters 32-34): EfficientNet-B4 + two-phase
+fine-tune + holdout threshold calibration + 4-view TTA + additive
+SAFETY\_MARGIN=0.10. Each row is one independent training run.}
+\label{tab:final}
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Iter & ROC-AUC & Recall & Accuracy & Precision \\
+\midrule
+32 & 0.9029 & \textbf{0.9745} & 0.6854 & 0.3602 \\
+33 & 0.9007 & 0.9270 & 0.7560 & 0.4182 \\
+34 & 0.9040 & 0.9558 & 0.7348 & 0.3996 \\
+\midrule
+mean & \textbf{0.9029} & \textbf{0.9524} & 0.7254 & 0.3927 \\
+std  & 0.0014 & 0.0226 & 0.0303 & 0.0244 \\
+\midrule
+target & $\ge 0.85$ & $\ge 0.95$ & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both pre-registered targets are met on the 3-rep mean
+(Table~\ref{tab:final}); 2 of 3 individual reps cross the recall target.
+The deployed checkpoint (iter 35 weights, verified by reloading at
+\texttt{results.tsv} row 37) produces AUC 0.9021 and recall 0.9676 every
+time it is reloaded, providing a bit-for-bit reproducible shippable artifact.
+
+\subsection{Stable directions (what produced real value)}
+
+Four single-variable changes account for essentially the entire gain
+from the iter-1 baseline (AUC 0.793, recall 0.898), each replicated:
+
+\textbf{(1) Pretrained CNN backbone (iter 2).} Logistic regression $\to$
+AlexNet: AUC $+0.094$ in a single iteration; every subsequent CNN run
+($\ge 35$ runs) sits in [0.88, 0.90] AUC. The architecture-class
+effect is the largest in the project.
+
+\textbf{(2) Phase-3 threshold calibration with holdout cal (iters 6, 14-16).}
+The default $\tau=0.5$ decision threshold from \texttt{BaseTorchModel}
+is calibrated for class-balanced problems; replacing it with a
+\texttt{target-recall}-derived threshold gives recall $+0.09$ at no AUC
+cost. Moving the cal source from the training batches to a 60-batch
+holdout slice eliminated within-iteration leakage between calibration
+and gradient updates (iters 14-16, 3-rep mean recall 0.920).
+
+\textbf{(3) Backbone upgrade B2 $\to$ B4 (iters 23-25).}
+Single-variable swap, 3 reps: mean recall $0.920 \to 0.942$, standard
+deviation halved ($0.039 \to 0.021$). The deeper backbone scores hard
+malignant cases with higher probability, which lowers the holdout-derived
+threshold and raises test recall without affecting ranking quality
+(AUC unchanged).
+
+\textbf{(4) 4-view TTA + additive SAFETY\_MARGIN=0.10 (iters 29-34).}
+TTA alone (iters 29-31) added $+0.006$ AUC reproducibly and was a
+recall wash. Adding the safety margin (iters 32-34) raised mean recall
+across the 0.95 target line ($0.934 \to 0.952$) without further AUC cost.
+
+\subsection{Noise, dead ends, and failures}
+
+Six modification classes regressed or produced no effect distinguishable
+from within-condition noise. We summarize the most informative failures.
+
+\textbf{Full RNG seeding for determinism (iters 20-21).} Identically seeded
+runs produced different per-epoch losses (1.0396 vs 1.0288 at epoch 1),
+different thresholds (0.560 vs 0.603), and different recall
+(0.825 vs 0.850). Root cause: \texttt{prepare.py} calls
+\texttt{tf.data.Dataset.shuffle()} during \texttt{load\_data()}, which
+runs before \texttt{model.py} is imported, so \texttt{tf.random.set\_seed()}
+inside \texttt{model.py} is too late to affect the shuffle.
+\emph{Determinism is unreachable from the editable surface alone.}
+This is the most consequential finding of the loop: it converts
+training-time variance from a tunable parameter into a structural
+constant, and motivated the eventual best-of-$N$ deployment artifact.
+
+\textbf{TARGET\_RECALL tuning (iters 17-19, 26).} Both directions
+regressed. Lowering TARGET\_RECALL from 0.995 to 0.95
+(5th-percentile estimator, iters 17-19) cut threshold variance 4.5$\times$
+but dropped mean recall to 0.77. Tightening to 0.99 (iter 26) moved the
+threshold the wrong direction and produced recall 0.88, below the entire
+B4 baseline range. The min-of-positives estimator at 0.995 is at a
+local optimum.
+
+\textbf{Larger calibration set (iters 27-28).} Raising CALIBRATION\_BATCHES
+from 60 to 120 cost 6\% of training data and lowered mean recall by 0.03.
+The held-out slice is large enough at 60 batches ($\approx 141$ positives).
+
+\textbf{15 training epochs on B4 (iter 22).} Severe overfitting: train
+loss 0.25, holdout-derived threshold 0.66, test recall 0.75. 10 epochs
+is the confirmed sweet spot for B4 at this data scale.
+
+\textbf{pos\_weight 10$\to$20 (Week 4 controlled experiment, iters 10-13).}
+Between-condition difference 3.5$\times$ smaller than within-condition
+standard deviation at \texttt{pos\_weight=20}. Effect indistinguishable
+from noise at 2 reps per condition.
+
+\section{Discussion and limits of the AutoResearch loop}
+\label{sec:limits}
+
+\textbf{Structural variance floor.} Because the frozen \texttt{prepare.py}
+shuffles data before any seed-setting code in \texttt{model.py} can run,
+per-run training variance is a constant of the loop. The locked recall
+standard deviation of 0.023 (Table~\ref{tab:final}) is at this floor;
+no \texttt{model.py}-side change can lower it. The deployment-mode
+checkpoint sidesteps this by saving the weights of a single canonical
+run --- producing literal 100\% reproducibility \emph{for the deployed
+model}, but not for the training process.
+
+\textbf{Test-set discipline under constant visibility.} The test set was
+never opened in the sense of being mined for hyperparameters --- all
+tuning used the per-iteration holdout cal slice --- but its metrics
+were logged on every iteration and therefore visible. We held to the
+discipline of not using test ranks to choose between conditions, but the
+loop tooling (which writes test metrics to \texttt{results.tsv} after
+every run) makes this a matter of researcher discipline rather than
+hard-enforced policy. A stronger loop would write test metrics to a
+sealed file unlocked only at scope lock.
+
+\textbf{Reproducibility caveat.} None of the 36 training runs are
+bit-exactly reproducible. Reproducing a run requires
+\texttt{git checkout <hash>} and re-running, which produces metrics
+within published noise bounds but not identical numbers. The deployment
+artifact (\texttt{model\_checkpoint.pt} + TFLite) \emph{is} bit-for-bit
+reproducible and is what we ship.
+
+\textbf{Pipeline ceiling.} 128$\times$128 source resolution + 30\% training
+subsample are characteristics of the frozen data pipeline. A higher
+ceiling presumably exists at 100\% data and native resolution; we cannot
+estimate it without modifying the frozen interfaces, which would
+invalidate the experimental record.
+
+\section{What the AutoResearch loop did well and poorly}
+
+The loop's biggest strength was forcing single-variable iteration with
+mechanical bookkeeping. Once the Week-4 framework imposed
+``one variable, replicate before claiming,'' every subsequent block
+(14-16, 17-19, 23-25, 27-28, 29-31, 32-34) is a clean controlled
+experiment readable directly from \texttt{results.tsv}. Negative results
+were preserved and labeled rather than hidden.
+
+The loop's biggest weakness was pursuing one more lever past the
+point of diminishing returns. The locked claim was effectively in hand
+at iter 31 (AUC 0.902, recall 0.934, AUC win locked). Iters 32-34
+crossed the recall mean above 0.95 with a clean single-variable change,
+but iters 26-28 are pure exploratory cost. Without the externally
+imposed Week-6 scope lock, the loop would have continued indefinitely.
+A pre-declared stop condition (``once 3 reps cross both targets, lock'')
+would have closed the loop earlier.
+
+\medskip
+\noindent\textbf{Code and data availability.}
+Full code, all 36 experiment rows, all weekly deliverables, the deployed
+checkpoint, the TFLite-converted model, and the Android app source are at
+\url{https://github.com/patrickgao2027/Stat390-Project}. The complete
+per-iteration archive is in
+\texttt{week7/experiment\_archive.md}; the locked results table is in
+\texttt{week7/final\_results\_table.md}; a longer reflection on the
+agent loop is in \texttt{week7/reflection\_memo.md}.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+\bibitem{tan2019efficientnet}
+M.~Tan and Q.~V. Le.
+\newblock {EfficientNet: Rethinking model scaling for convolutional neural networks}.
+\newblock In \emph{ICML}, 2019.
+
+\bibitem{isic2019}
+N.~Combalia et~al.
+\newblock {BCN20000: Dermoscopic lesions in the wild}.
+\newblock \emph{arXiv:1908.02288}, 2019. (ISIC 2019 dataset.)
+
+\bibitem{isic2020}
+V.~Rotemberg et~al.
+\newblock {A patient-centric dataset of images and metadata for identifying melanomas using clinical context}.
+\newblock \emph{Scientific Data}, 2021. (ISIC 2020 dataset.)
+\end{thebibliography}
+
+\end{document}
