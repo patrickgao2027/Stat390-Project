@@ -5,15 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.util.Log
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.gpu.CompatibilityList
-import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.nnapi.NnApiDelegate
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
-import kotlin.math.max
 
 /**
  * TFLite wrapper for the skin-lesion classifier.
@@ -46,34 +43,39 @@ class SkinLesionClassifier(context: Context) {
     }
 
     private val interpreter: Interpreter
-    private val delegate: AutoCloseable?
+    private val nnapiDelegate: NnApiDelegate?
     private val inputBuffer: ByteBuffer = ByteBuffer
         .allocateDirect(INPUT_SIZE * INPUT_SIZE * 3 * NUM_BYTES_PER_FLOAT)
         .order(ByteOrder.nativeOrder())
-    private val outputBuffer: Array<FloatArray> = arrayOf(FloatArray(1))
+    // TFLite output is shape [1] (1D) — InferenceWrapper does logits.squeeze(-1)
+    // before sigmoid, so a batch of 1 yields a single float in a 1-D tensor.
+    private val outputBuffer: FloatArray = FloatArray(1)
 
     init {
         val model = loadModelFile(context)
-        val options = Interpreter.Options()
-        val compat = CompatibilityList()
 
-        delegate = when {
-            tryAddNnapi(options) -> { Log.i(TAG, "Using NNAPI delegate"); null /* added directly */ }
-            compat.isDelegateSupportedOnThisDevice -> {
-                Log.i(TAG, "Using GPU delegate")
-                val d = GpuDelegate(compat.bestOptionsForThisDevice)
-                options.addDelegate(d); d
-            }
-            else -> { Log.i(TAG, "Using CPU (4 threads)"); options.setNumThreads(4); null }
+        // Attempt NNAPI first. If either the delegate constructor OR the
+        // Interpreter(model, options) call throws (NNAPI sometimes fails
+        // to compile B4-style models like RESIZE_BILINEAR + MBConv stacks
+        // on certain Snapdragon revisions), fall back to CPU+XNNPACK.
+        var iface: Interpreter? = null
+        var delegate: NnApiDelegate? = null
+        try {
+            val opts = Interpreter.Options()
+            val d = NnApiDelegate()
+            opts.addDelegate(d)
+            iface = Interpreter(model, opts)
+            delegate = d
+            Log.i(TAG, "Using NNAPI delegate (Snapdragon NPU on S22+)")
+        } catch (e: Throwable) {
+            Log.w(TAG, "NNAPI failed (${e.message}), falling back to CPU+XNNPACK")
+            try { delegate?.close() } catch (_: Throwable) {}
+            delegate = null
+            val cpuOpts = Interpreter.Options().setNumThreads(4)
+            iface = Interpreter(model, cpuOpts)
         }
-        interpreter = Interpreter(model, options)
-    }
-
-    /** Try to add NNAPI delegate; return true if successful. */
-    private fun tryAddNnapi(opts: Interpreter.Options): Boolean = try {
-        opts.addDelegate(NnApiDelegate()); true
-    } catch (e: Throwable) {
-        Log.w(TAG, "NNAPI unavailable: ${e.message}"); false
+        interpreter = iface!!
+        nnapiDelegate = delegate
     }
 
     private fun loadModelFile(context: Context): MappedByteBuffer {
@@ -119,7 +121,7 @@ class SkinLesionClassifier(context: Context) {
     private fun runOne(bitmap: Bitmap): Float {
         bitmapToInputBuffer(bitmap)
         interpreter.run(inputBuffer, outputBuffer)
-        return outputBuffer[0][0]
+        return outputBuffer[0]
     }
 
     /** Normalize Bitmap pixels to float32 [0, 1] in NHWC (interleaved) order.
@@ -147,7 +149,7 @@ class SkinLesionClassifier(context: Context) {
 
     fun close() {
         try { interpreter.close() } catch (_: Throwable) {}
-        try { (delegate as? AutoCloseable)?.close() } catch (_: Throwable) {}
+        try { nnapiDelegate?.close() } catch (_: Throwable) {}
     }
 }
 

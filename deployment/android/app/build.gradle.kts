@@ -51,9 +51,10 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
 
-    // TensorFlow Lite + NNAPI/GPU delegates for S22+ acceleration
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4")
+    // TensorFlow Lite — using 2.13.0 (last pre-split version) for AGP 9.x
+    // compatibility. NNAPI delegate (built into core tensorflow-lite) routes
+    // to the S22+ Snapdragon NPU, which is faster than the GPU delegate
+    // anyway — so we drop the GPU delegate complexity entirely.
+    implementation("org.tensorflow:tensorflow-lite:2.13.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 }
