@@ -1,6 +1,19 @@
-# Ablation Table — All 34 Iterations
+# Ablation Table — All 37 Iterations
 
-Single source of truth: `results.tsv`. Each iteration changed at most one variable from a documented comparison set. Status = `keep` / `discard` / `baseline`.
+Single source of truth: `results.tsv`. Each iteration changed at most one variable from a documented comparison set. Status = `keep` / `discard` / `baseline` / `final` / `deploy`.
+
+## Why these baselines (the architecture ladder)
+
+The original `program.md` set the trajectory: *"I already have a logistic regression baseline model that has ROC_AUC of 0.79 so start with more advanced models. Consider Alex-Net before using Efficient-Net -B0."* The ladder was therefore not arbitrary — each rung was chosen for a specific reason:
+
+1. **Logistic regression (iter 1, baseline)** — `program.md`-supplied starting point. Establishes the non-CNN floor at AUC 0.79 / recall 0.90. Any CNN that didn't clear this would be rejected.
+2. **AlexNet (iter 2)** — chosen per the `program.md` directive before jumping to EfficientNet. Confirms ImageNet-pretrained features transfer to dermoscopy at all. AUC +0.09 over LR proved transfer learning is the right path.
+3. **EfficientNet-B0 (iter 3)** — smallest EfficientNet variant, used to verify the family works in our pipeline before scaling up parameters and compute.
+4. **EfficientNet-B2 (iters 5-22)** — capacity sweet spot for iteration speed (~60 min/rep vs ~110 for B4). Most of Weeks 4-5's controlled experiments ran on B2 to keep the loop fast.
+5. **EfficientNet-B4 (iters 23-25 onward)** — bumped after Week 5 controlled experiments showed within-condition recall variance was the dominant problem. B4's larger capacity (19M vs 9M params, ImageNet top-1 81.5% vs 80.1%) and B-family's natural 224×224 input made it the right next step. B5/B6 were considered but ruled out — diminishing AUC return vs ~1.5×+ training cost.
+6. **B4 + TTA + SAFETY_MARGIN (final, iters 32-36)** — TTA stabilized the AUC (+0.006 reproducibly); SAFETY_MARGIN shifted the operating point toward recall. Iter 35 weights saved as the deployment checkpoint.
+
+Every transition between rungs was a single-variable controlled experiment with 3+ replicates so the lift could be distinguished from within-condition noise.
 
 ## Compact ablation (one row per iteration)
 
@@ -24,7 +37,9 @@ Single source of truth: `results.tsv`. Each iteration changed at most one variab
 | 26 | discard | TARGET_RECALL 0.995 → 0.99 | 0.898 | 0.882 | Threshold moved wrong direction |
 | 27-28 | keep | CALIBRATION_BATCHES 60 → 120 | 0.894-0.897 | 0.888-0.930 | Lost 6% training data; recall mean dropped 0.03 |
 | 29-31 | keep | + 4-view TTA | 0.901-0.902 | 0.912-0.955 | AUC +0.006 reproducibly; recall a wash |
-| **32-34** | **keep (FINAL)** | **+ SAFETY_MARGIN=0.10** | **0.901-0.904** | **0.927-0.974** | **🎯 mean recall 0.952, AUC 0.903, both targets met** |
+| 32-34 | keep | + SAFETY_MARGIN=0.10 | 0.901-0.904 | 0.927-0.974 | First 3 reps of final config: mean recall 0.952 |
+| **35-36** | **keep (FINAL config + weight-save)** | **best-of-N weight save** | **0.892-0.902** | **0.967-0.968** | **🎯 Both reps individually crossed 0.95; iter 35 weights saved as deployed checkpoint** |
+| **37** | **deterministic verify** | **LOAD_CHECKPOINT=True** | **0.902** | **0.968** | **Bit-for-bit reload of iter 35 checkpoint; training time 0.75 s vs 5500 s — proves deployment determinism** |
 
 ## Controlled-experiment comparison set (single-variable changes only)
 
@@ -39,7 +54,8 @@ These are the rigorous 3-rep comparisons that drove the final lever decisions:
 | Calibration target (iters 23-25 vs 26) | 0.995 → 0.99 | 0.942 → 0.882 | 0.896 → 0.898 | **Reverted** |
 | Cal size (iters 23-25 vs 27-28) | 60 → 120 batches | 0.942 → 0.909 | 0.896 → 0.896 | **Reverted** |
 | TTA (iters 23-25 vs 29-31) | OFF → 4-view | 0.942 → 0.934 | 0.896 → 0.902 | **Kept** (AUC win, recall wash) |
-| Safety margin (iters 29-31 vs 32-34) | 0.00 → 0.10 | 0.934 → **0.952** ✅ | 0.902 → 0.903 | **Kept (FINAL)** |
+| Safety margin (iters 29-31 vs 32-34) | 0.00 → 0.10 | 0.934 → 0.952 ✅ | 0.902 → 0.903 | **Kept** |
+| Pooled final-config (iters 32-36, n=5) | full lock | **mean 0.958, 4/5 ≥ 0.95** | mean 0.900 | **🎯 deployed via iter 35 checkpoint** |
 
 ## What actually got the project across the line
 

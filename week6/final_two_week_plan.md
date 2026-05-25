@@ -14,7 +14,7 @@
 | 2 | Write the plain-English summary memo for non-technical stakeholders (1 page, integrates the project statement) | 2 hr | self |
 | 3 | Generate trajectory + ablation plots (mirror `week5/make_plot.py` pattern); add through iter 34 | 1 hr | self |
 | 4 | Generate one Grad-CAM / saliency-map figure on 5 sample test images — proves the model attends to the lesion, not artifacts | 3 hr | self |
-| 5 | Save best-checkpoint weights from one canonical training run (add minimal save logic to model.py); deploy that single checkpoint for reproducibility appendix | 2 hr + 95 min training | self |
+| 5 | ✅ **DONE early** — best-of-N weight save implemented (iter 35 weights saved, iter 37 deterministic-reload verified bit-for-bit). Deployment checkpoint already at `model_checkpoint.pt`. | — | done |
 | 6 | Draft final presentation slide deck (8-10 slides: problem → data → method → results → limits → demo) | 4 hr | self |
 | 7 | Practice presentation aloud; trim to time | 2 hr | self |
 

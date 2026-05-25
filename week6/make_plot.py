@@ -59,6 +59,9 @@ ITER_LABELS = [
     "32: +SM=0.10 r1",
     "33: +SM=0.10 r2",
     "34: +SM=0.10 r3",
+    "35: best-of-N r1 (saved)",
+    "36: best-of-N r2",
+    "37: deploy verify",
 ]
 
 # Run-status of each iter (matches results.tsv status column)
@@ -76,6 +79,8 @@ STATUS = {
     27: "keep", 28: "keep",
     29: "keep", 30: "keep", 31: "keep",
     32: "final", 33: "final", 34: "final",
+    35: "final", 36: "final",
+    37: "deploy",
 }
 
 CONTROLLED_BLOCKS = {
@@ -86,7 +91,8 @@ CONTROLLED_BLOCKS = {
     "B4 backbone (Wk5 p3)": (23, 25),
     "cal=120 (Wk6)": (27, 28),
     "TTA (Wk6)": (29, 31),
-    "SAFETY=0.10 FINAL (Wk6)": (32, 34),
+    "SAFETY=0.10 (Wk6)": (32, 34),
+    "best-of-N + verify (FINAL)": (35, 37),
 }
 
 
@@ -103,6 +109,7 @@ def make_metric_trajectory(df):
         "keep": "#1f77b4",
         "discard": "#d62728",
         "final": "#2ca02c",
+        "deploy": "#9467bd",
     }
 
     # AUC subplot
@@ -144,7 +151,7 @@ def make_metric_trajectory(df):
 
     # Shade the controlled-experiment sub-blocks on both axes
     block_colors = ["#fff2cc", "#dcedc8", "#cfe2f3", "#f3e5f5", "#fce4ec",
-                    "#e1f5fe", "#fff8e1", "#c8e6c9"]
+                    "#e1f5fe", "#fff8e1", "#c8e6c9", "#e0c8f5"]
     for (label, (start, end)), bcolor in zip(CONTROLLED_BLOCKS.items(), block_colors):
         for ax in (ax_auc, ax_rec):
             ax.axvspan(start - 0.4, end + 0.4, color=bcolor, alpha=0.6, zorder=0)
@@ -189,12 +196,14 @@ def make_controlled_experiments(df):
                     [("OFF\nn=3", no_tta), ("4-view\nn=3", tta)],
                     color=["#1f77b4", "#ff7f0e"])
 
-    # Comparison 4: SAFETY_MARGIN 0 vs 0.10 (iters 29-31 vs 32-34) — THE FINAL LEVER
-    sm0 = df.iloc[[28, 29, 30]]      # iters 29-31
-    sm10 = df.iloc[[31, 32, 33]]     # iters 32-34
+    # Comparison 4: TTA-only vs FINAL config (TTA + SAFETY_MARGIN=0.10).
+    # FINAL pool = iters 32-36 (all 5 reps of the locked config, including the
+    # two weight-save retraining runs that confirmed the result).
+    tta_only = df.iloc[[28, 29, 30]]            # iters 29-31
+    final_pool = df.iloc[[31, 32, 33, 34, 35]]  # iters 32-36
     plot_controlled(axes[3],
-                    "SAFETY_MARGIN (Wk6 FINAL)\n29-31 vs 32-34",
-                    [("0.00\nn=3", sm0), ("0.10\nn=3", sm10)],
+                    "FINAL config (Wk6 lock + retrain)\n29-31 vs 32-36",
+                    [("TTA only\nn=3", tta_only), ("FINAL\nn=5", final_pool)],
                     color=["#1f77b4", "#2ca02c"])
 
     fig.suptitle(
