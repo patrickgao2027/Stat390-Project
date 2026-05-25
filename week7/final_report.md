@@ -95,6 +95,8 @@ Six modification classes regressed or produced no effect distinguishable from wi
 
 The loop's biggest strength was forcing single-variable iteration with mechanical bookkeeping. Once the Week-4 framework imposed "one variable, replicate before claiming," every subsequent block (14-16, 17-19, 23-25, 27-28, 29-31, 32-34) is a clean controlled experiment readable directly from `results.tsv`. Negative results were preserved and labeled rather than hidden.
 
+The loop's main weakness was early-block confounding: iters 4, 5, and 7 each changed two variables at once, producing the project's largest single AUC jump (0.79 → 0.90) without a clean causal account. Four retroactive iterations (10-13) were spent untangling what actually drove the gain — compute that a pre-flight diff check would have saved entirely.
+
 In my experience, auto-research is extremely good at generating new ideas and greatly accelerating the coding process toward set-out goals. The loop produced more candidate levers (pos_weight tuning, threshold estimators, TTA configurations, SAFETY_MARGIN variants, calibration-batch counts) than a human iterator working alone would have proposed in the same wall-clock window, and the mechanical parts — edit one constant, launch the run, log the row, draft the commit — were compressed to a few minutes of human time per iteration. Both target metrics (AUC ≥ 0.85, recall ≥ 0.95) were met and the deployment artifact shipped within the project window, which is the outcome the loop was set up to produce.
 
 ---

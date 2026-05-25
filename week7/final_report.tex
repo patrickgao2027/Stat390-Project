@@ -323,6 +323,13 @@ mechanical bookkeeping. Once the Week-4 framework imposed
 experiment readable directly from \texttt{results.tsv}. Negative results
 were preserved and labeled rather than hidden.
 
+The loop's main weakness was early-block confounding: iters 4, 5, and 7
+each changed two variables at once, producing the project's largest
+single AUC jump (0.79 $\to$ 0.90) without a clean causal account.
+Four retroactive iterations (10-13) were spent untangling what actually
+drove the gain --- compute that a pre-flight diff check would have saved
+entirely.
+
 In my experience, auto-research is extremely good at generating new
 ideas and greatly accelerating the coding process toward set-out goals.
 The loop produced more candidate levers (\texttt{pos\_weight} tuning,
