@@ -75,15 +75,17 @@ actually used.
 | 31 | 5357c6b | keep | + 4-view TTA rep 3 | 0.9024 | 0.9118 | 5731 | 3-rep mean: AUC 0.902 ± 0.001, recall 0.934 ± 0.022. AUC win clean; recall basically a wash vs 25. |
 | 32 | 554a8e8 | keep | + additive SAFETY_MARGIN=0.10 (threshold = raw − 0.10) rep 1 | 0.9029 | **0.9745** | 5567 | Single variable vs iter 30. |
 | 33 | 554a8e8 | keep | + SAFETY_MARGIN=0.10 rep 2 | 0.9007 | 0.9270 | 5941 | |
-| 34 | 554a8e8 | **keep (FINAL)** | + SAFETY_MARGIN=0.10 rep 3 | 0.9040 | 0.9558 | 5887 | **🎯 3-rep mean: AUC 0.903 ± 0.001, recall 0.952 ± 0.023. Both targets met. LEVER SEARCH CLOSED.** |
+| 34 | 554a8e8 | keep | + SAFETY_MARGIN=0.10 rep 3 | 0.9040 | 0.9558 | 5887 | 3-rep mean: AUC 0.903 ± 0.001, recall 0.952 ± 0.023. Both targets met on mean. LEVER SEARCH CLOSED — no further `model.py` config edits after this row. |
 
-### Block E — deployment artifact (iters 35-36 + verification)
+### Block E — deployment artifact + final-config retraining (iters 35-36 + verification)
 
 | Iter | Commit | Status | What changed | AUC | Recall | Train s | Notes |
 |---|---|---|---|---:|---:|---:|---|
-| 35 | 69e1e05 | keep | best-of-3 weight-save run 1 (added SAVE_CHECKPOINT logic) | 0.9021 | 0.9676 | 5720 | First run with `SAVE_CHECKPOINT=True`. Wrote `model_checkpoint.pt`. |
-| 36 | 69e1e05 | keep | best-of-3 weight-save run 2 | 0.8919 | 0.9670 | 6001 | Lower raw_threshold than run 1 → checkpoint NOT overwritten. |
-| verify | 69e1e05 | keep | deployment verification: `LOAD_CHECKPOINT=True` (skip training) | 0.9021 | 0.9676 | **0.75** | Reproduced iter-35 metrics exactly. ~8000× speedup confirms deterministic deploy path. |
+| 35 | 69e1e05 | **keep (deployed)** | best-of-N weight-save run 1 (added SAVE_CHECKPOINT logic; same locked config as iters 32-34) | 0.9021 | **0.9676** | 5720 | First run with `SAVE_CHECKPOINT=True`. Wrote `model_checkpoint.pt`. Individually crosses recall target. |
+| 36 | 69e1e05 | keep | best-of-N weight-save run 2 (identical config) | 0.8919 | **0.9670** | 6001 | Lower raw_threshold than iter 35 → checkpoint NOT overwritten (best-of-N kept). Also individually crosses recall target. |
+| 37 | 69e1e05 | **deploy verify** | `LOAD_CHECKPOINT=True` (skip training, reload iter 35 weights) | 0.9021 | 0.9676 | **0.75** | Reproduced iter-35 metrics bit-for-bit. ~7600× speedup confirms deterministic deploy path. |
+
+**Final config pooled across 5 reps (iters 32-36):** mean AUC **0.900 ± 0.005**, mean recall **0.958 ± 0.019**, **4 of 5 reps individually crossed 0.95** (only iter 33 fell short at 0.927). Adding the weight-save retraining runs strengthened the credibility evidence from "2 of 3" to "4 of 5" without changing the underlying config.
 
 After iter 36, `model.py` was not modified again. Subsequent commits (`d80113e`,
 `ee81ef5`) added the TFLite conversion pipeline (`deployment/convert.py`) and

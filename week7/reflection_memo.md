@@ -2,7 +2,7 @@
 
 **Project:** ISIC binary skin lesion classifier (benign vs. malignant)
 **Author:** Patrick Gao (Northwestern STAT 390)
-**Final result:** ROC-AUC 0.903 ± 0.001, recall 0.952 ± 0.023 across 3 reps (iters 32-34)
+**Final result:** ROC-AUC 0.900 ± 0.005, recall 0.958 ± 0.019 across 5 reps (iters 32-36; 4/5 individually ≥ 0.95). Deployed checkpoint (iter 35 weights): AUC 0.9021, recall 0.9676 deterministically on every inference.
 **Loop window:** 36 model iterations + 1 deployment-verification run, ~50 GPU-hours total
 
 The Week 7 brief asks five things of this memo: what the agent did well, what it

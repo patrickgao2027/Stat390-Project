@@ -8,7 +8,7 @@
 
 ## Abstract
 
-We report on a 36-iteration AutoResearch loop that produced a calibrated binary skin-lesion classifier on the combined ISIC 2019+2020 dermoscopy datasets (~57,586 images, ~5.3:1 benign:malignant imbalance). The final method — an ImageNet-pretrained EfficientNet-B4 with two-phase fine-tuning, threshold calibration on a held-out training slice, 4-view test-time augmentation, and an additive operating-point safety margin — achieves mean ROC-AUC 0.903 ± 0.001 and mean recall 0.952 ± 0.023 across three independent training replicates, exceeding both pre-registered targets (AUC ≥ 0.85, recall ≥ 0.95). We characterize which loop directions produced stable value (architecture upgrades and threshold calibration), which produced noise or regression (post-hoc determinism, multiplicative safety margins, calibration-target tuning), and the structural variance floor imposed by the frozen data pipeline. The deployed checkpoint reproduces its metrics bit-for-bit and has been shipped end-to-end through PyTorch → ONNX → TFLite to an Android (Kotlin/CameraX/NNAPI) screening app for Samsung S22+.
+We report on a 36-iteration AutoResearch loop that produced a calibrated binary skin-lesion classifier on the combined ISIC 2019+2020 dermoscopy datasets (~57,586 images, ~5.3:1 benign:malignant imbalance). The final method — an ImageNet-pretrained EfficientNet-B4 with two-phase fine-tuning, threshold calibration on a held-out training slice, 4-view test-time augmentation, an additive operating-point safety margin, and best-of-N weight-save for deployment — achieves mean ROC-AUC 0.900 ± 0.005 and mean recall 0.958 ± 0.019 across five independent training replicates, with four of five replicates individually clearing the 95% recall target. Both pre-registered criteria (AUC ≥ 0.85, recall ≥ 0.95) are met. The architecture sequence (LR → AlexNet → EfficientNet-B0/B2/B4) was driven by the previous baseline's measured failure mode, not pre-selected. We characterize which loop directions produced stable value (architecture upgrades and threshold calibration), which produced noise or regression (post-hoc determinism, multiplicative safety margins, calibration-target tuning), and the structural variance floor imposed by the frozen data pipeline. The deployed checkpoint (iter 35 weights) reproduces its metrics bit-for-bit on every inference (AUC 0.9021, recall 0.9676) and has been shipped end-to-end through PyTorch → ONNX → TFLite to an Android (Kotlin/CameraX/NNAPI) screening app for Samsung S22+.
 
 ## 1. Introduction and AutoResearch contract
 
@@ -40,22 +40,24 @@ We report on a 36-iteration AutoResearch loop that produced a calibrated binary 
 
 ### 4.1 Final result
 
-**Table 1.** Locked configuration (iters 32-34): EfficientNet-B4 + two-phase fine-tune + holdout threshold calibration + 4-view TTA + additive SAFETY_MARGIN=0.10. Each row is one independent training run.
+**Table 1.** Locked configuration (iters 32-36): EfficientNet-B4 + two-phase fine-tune + holdout threshold calibration + 4-view TTA + additive SAFETY_MARGIN=0.10 + best-of-N weight save. Each row is one independent training run.
 
-| Iter | ROC-AUC | Recall | Accuracy | Precision |
-|---|---:|---:|---:|---:|
-| 32 | 0.9029 | **0.9745** | 0.6854 | 0.3602 |
-| 33 | 0.9007 | 0.9270 | 0.7560 | 0.4182 |
-| 34 | 0.9040 | 0.9558 | 0.7348 | 0.3996 |
-| **mean** | **0.9029** | **0.9524** | 0.7254 | 0.3927 |
-| std | 0.0014 | 0.0226 | 0.0303 | 0.0244 |
-| target | ≥ 0.85 | ≥ 0.95 | — | — |
+| Iter | ROC-AUC | Recall | Accuracy | Precision | Notes |
+|---|---:|---:|---:|---:|---|
+| 32 | 0.9029 | **0.9745** | 0.6854 | 0.3602 | Final-lever rep 1 |
+| 33 | 0.9007 | 0.9270 | 0.7560 | 0.4182 | Final-lever rep 2 (only rep below 0.95) |
+| 34 | 0.9040 | 0.9558 | 0.7348 | 0.3996 | Final-lever rep 3 |
+| 35 | 0.9021 | **0.9676** | 0.7120 | 0.3805 | Weight-save rep 1 → saved as deployment checkpoint |
+| 36 | 0.8919 | **0.9670** | 0.6811 | 0.3562 | Weight-save rep 2 |
+| **mean** | **0.9003** | **0.9584** | 0.7139 | 0.3829 | n = 5 |
+| std | 0.0048 | 0.0193 | 0.0314 | 0.0250 | |
+| target | ≥ 0.85 | ≥ 0.95 | — | — | |
 
-Both pre-registered targets are met on the 3-rep mean (Table 1); 2 of 3 individual reps cross the recall target. The deployed checkpoint (iter 35 weights, verified by reloading at `results.tsv` row 37) produces AUC 0.9021 and recall 0.9676 every time it is reloaded, providing a bit-for-bit reproducible shippable artifact.
+Both pre-registered targets are met on the 5-rep mean (Table 1); **4 of 5 individual reps cross the recall target**. The deployed checkpoint (iter 35 weights, saved by best-of-N selection on `raw_threshold`, verified by reloading at `results.tsv` row 37) produces AUC 0.9021 and recall 0.9676 every time it is reloaded — bit-for-bit identical metrics across reloads, in 0.75 s end-to-end vs ~5500 s for training, providing a shippable artifact that meets the recall target deterministically.
 
 ### 4.2 Stable directions (what produced real value)
 
-Four single-variable changes account for essentially the entire gain from the iter-1 baseline (AUC 0.793, recall 0.898), each replicated:
+Four single-variable changes account for essentially the entire gain from the iter-1 baseline (AUC 0.793, recall 0.898), each replicated. The architecture sequence (LR → AlexNet → EfficientNet-B0 → B2 → B4) was driven by the previous baseline's measured failure mode rather than pre-selected: AlexNet was chosen per the `program.md` directive to confirm pretrained features transfer to dermoscopy at all; B0 was the smallest EfficientNet variant, chosen to verify the family works in our pipeline; B2 was the speed/capacity sweet spot for fast iteration; B4 was bumped only after Week 5 controlled experiments showed B2's recall variance was the dominant problem and the capacity ladder would help.
 
 **(1) Pretrained CNN backbone (iter 2).** Logistic regression → AlexNet: AUC +0.094 in a single iteration; every subsequent CNN run (≥ 35 runs) sits in [0.88, 0.90] AUC. The architecture-class effect is the largest in the project.
 

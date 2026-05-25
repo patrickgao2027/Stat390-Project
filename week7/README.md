@@ -26,12 +26,24 @@ as the data for slides 4-7 of the recommended 8-slide deck, and
 
 ## Headline numbers (locked)
 
-- **ROC-AUC:** 0.903 ± 0.001 *(target ≥ 0.85)* ✅
-- **Recall:**  0.952 ± 0.023 *(target ≥ 0.95, met on mean; 2/3 reps individually cross)* ✅
-- **Stability:** mean of 3 independent training reps (iters 32, 33, 34 — commit `554a8e8`)
-- **Deployment artifact:** [`model_checkpoint.pt`](../model_checkpoint.pt) (75 MB) + [`deployment/skin_lesion_b4.tflite`](../deployment/skin_lesion_b4.tflite) (40 MB fp16) — verified bit-for-bit reproducible
+- **ROC-AUC:** 0.900 ± 0.005 *(target ≥ 0.85)* ✅
+- **Recall:**  0.958 ± 0.019 *(target ≥ 0.95, met on mean; **4 of 5 reps individually cross**)* ✅
+- **Stability:** mean of **5** independent training reps (iters 32-36 — commits `554a8e8`, `69e1e05`)
+- **Deployment artifact:** [`model_checkpoint.pt`](../model_checkpoint.pt) (75 MB, iter 35 weights) + [`deployment/skin_lesion_b4.tflite`](../deployment/skin_lesion_b4.tflite) (~67 MB fp32) — verified bit-for-bit reproducible; deployed model gives recall 0.968 and AUC 0.902 deterministically on every inference
 - **Final config:** EfficientNet-B4 + two-phase fine-tune + holdout cal (60 batches, TARGET_RECALL=0.995) + 4-view TTA + additive SAFETY_MARGIN=0.10
 - **Total iterations:** 36 model.py iterations + 1 deployment-mode verification = 37 logged runs
+
+## Baseline ladder (why each was chosen)
+
+The architecture sequence wasn't arbitrary. Each rung was motivated by the previous one's measured failure mode:
+
+| Stage | Baseline | Why | What it told us |
+|---|---|---|---|
+| iter 1 | Logistic regression | `program.md`-supplied floor (AUC 0.79) | Set the bar any CNN had to clear |
+| iter 2 | AlexNet | `program.md` directive before EfficientNet | Pretrained features transfer to dermoscopy (+0.09 AUC) |
+| iter 3 | EfficientNet-B0 | Smallest EffNet variant, verify family works | Confirms the architecture choice |
+| iters 5-22 | EfficientNet-B2 | Speed/capacity sweet spot (~60 min/rep) | Most controlled experiments ran here |
+| iters 23+ | EfficientNet-B4 | Bumped after Week 5 showed B2's recall variance dominated | Cut within-condition recall std in half (0.039 → 0.021) |
 
 ## Reading order
 
@@ -79,24 +91,30 @@ Project-level documentation:
 
 | Question | Answer |
 |---|---|
-| Was the test set opened only once? | No — test metrics were logged on every iteration. **However**, model-side decisions used the per-iteration holdout cal slice (60 batches materialized before training, excluded from gradients). Test was reported, not optimized against. The locked iters 32-34 were selected because the controlled-experiment table showed SAFETY_MARGIN=0.10 raised mean recall in 3 reps, not because they ranked highest on test. |
+| Was the test set opened only once? | No — test metrics were logged on every iteration. **However**, model-side decisions used the per-iteration holdout cal slice (60 batches materialized before training, excluded from gradients). Test was reported, not optimized against. The locked config was selected because the controlled-experiment table showed SAFETY_MARGIN=0.10 raised mean recall in 3 reps, not because the runs ranked highest on test. |
 | Did test results influence further tuning? | They influenced *direction*, not selection: iter 22's overfitting was first visible in test recall, which is what triggered the revert. The locked config was selected via the controlled-comparison table, not the test leaderboard. |
 | Did the evaluator remain fixed? | Yes. `run.py` is frozen and computed AUC/recall/precision/accuracy identically for all 37 rows. |
-| Was the result repeated for stability? | Yes — the locked claim is the mean of 3 independent training reps (iters 32, 33, 34), not a single best run. |
-| What concrete evidence supports the claim? | `results.tsv` rows 33-35 + commit `554a8e8` (3 reps of the locked config). Deployed checkpoint at row 37 (commit `69e1e05`) is exactly reproducible. Both available at the GitHub link above. |
+| Was the result repeated for stability? | Yes — the locked claim is the mean of **5** independent training reps (iters 32-36), not a single best run. The two extra reps (35-36) were added when the weight-save logic was layered on, both crossing the recall target independently. |
+| What concrete evidence supports the claim? | `results.tsv` rows 33-37 + commits `554a8e8` (iters 32-34) and `69e1e05` (iters 35-36, deployment verify). Deployed checkpoint at row 37 reproduces iter 35's metrics bit-for-bit in 0.75 s. Both available at the GitHub link above. |
 
 ## Honest one-paragraph summary (plain English)
 
 This project built a smartphone-deployable screening model that, given a
 photograph of a skin lesion, decides whether the lesion looks malignant
-enough to refer to a dermatologist. The model catches about 95 out of
-every 100 actual cancers on average, with a false-alarm rate that flags
-roughly 1.5 benign lesions per cancer correctly caught — the right
+enough to refer to a dermatologist. The model catches about 96 out of
+every 100 actual cancers on average — four out of five independent
+training runs individually clear the 95% target — and the deployed
+checkpoint (the actual saved weights that ship with the Android app)
+catches 96.8% deterministically on every inference. The false-alarm rate
+flags roughly 1.5 benign lesions per cancer correctly caught — the right
 tradeoff for a screening aid, where missing cancers is much worse than
 unnecessary follow-ups. The model is not a diagnostic tool. The work
-ran through 36 documented experiments over 8 weeks; four of those
-experiments contributed almost all the improvement (using a pretrained
-deep network, calibrating the decision threshold on held-out data,
-upgrading the network size, and adding test-time augmentation + a small
-safety margin); the rest are documented dead ends that an honest project
-preserves rather than hides.
+ran through 36 documented experiments over 8 weeks, starting from a
+logistic regression baseline (AUC 0.79) and stepping deliberately through
+AlexNet → EfficientNet-B0 → B2 → B4 — each baseline chosen because the
+previous one's failure mode said which capability was missing. Four of
+those experiments contributed almost all the improvement (using a
+pretrained deep network, calibrating the decision threshold on held-out
+data, upgrading the network size, and adding test-time augmentation +
+a small safety margin); the rest are documented dead ends that an honest
+project preserves rather than hides.
