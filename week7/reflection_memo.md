@@ -5,201 +5,180 @@
 **Final result:** ROC-AUC 0.900 ± 0.005, recall 0.958 ± 0.019 across 5 reps (iters 32-36; 4/5 individually ≥ 0.95). Deployed checkpoint (iter 35 weights): AUC 0.9021, recall 0.9676 deterministically on every inference.
 **Loop window:** 36 model iterations + 1 deployment-verification run, ~50 GPU-hours total
 
-The Week 7 brief asks five things of this memo: what the agent did well, what it
-did poorly, what required human judgment, how I would redesign the loop, and
-overall what I learned about doing research with AI agents. I answer each in
-order, with specific iteration numbers as evidence so the claims are auditable
-against [experiment_archive.md](experiment_archive.md).
+Five lessons, in roughly the order they bit me, with iteration numbers as
+evidence so the claims are auditable against
+[experiment_archive.md](experiment_archive.md).
 
 ---
 
-## 1. What the agent did well
+## 1. The agent is only as good as your setup
 
-**Disciplined single-variable iteration once given the protocol.** After Week 4
-established the "change exactly one thing per iter, replicate before deciding"
-rule, the agent honored it for the rest of the project — every iteration from 14
-onward names a single controlled variable in its `results.tsv` description
-and runs in pre-declared 3-rep blocks (14-16, 17-19, 23-25, 27-28, 29-31, 32-34).
-This is the *one* discipline failure of the early block (iters 4, 5, 7, 9 are all
-marked "confounded" in the archive) and the *one* discipline that the agent
-internalized and never broke again. The cleanest demonstration: when iter 26
-moved a single variable and regressed, the rep was abandoned after 1 run (not
-3), the reversion was committed with `--discard`, and the next experiment moved
-on without sunk-cost defending the choice.
+The single biggest determinant of whether the agent produced useful work was
+the structure I gave it *before* it started executing — the frozen contract
+between `prepare.py`, `model.py`, and `run.py`; the requirement to log every
+run to `results.tsv` with a status flag; the rule that one variable changes
+per iteration; the `CLAUDE.md` block that named which files were editable.
 
-**Rapid execution of mechanical follow-throughs.** Once a decision was made,
-the agent was very fast at the mechanical parts: edit one line in `model.py`,
-launch `python -u run.py "iter N description"`, append the row to `results.tsv`,
-draft the commit message, push to GitHub. The end-to-end "iter idea → committed
-result" overhead was a few minutes of human time per iteration (most of the
-wall clock was GPU training). At 36 iterations, that compression mattered.
+Where that scaffolding existed, the agent ran cleanly for dozens of iterations
+without supervision. Iters 14 onward, after the Week-4 protocol was written
+down, are the cleanest stretch of the project: every row in `results.tsv` is
+attributable to one variable, every multi-rep block was pre-declared, every
+abandoned direction was committed with `--discard` rather than silently
+deleted. The agent did not invent that discipline; it followed it because the
+rules were explicit, in writing, and enforced by `run.py`'s logging.
 
-**Honest writeup of negative results.** The Week-5 "what actually worked" memo
-labels 6 of 10 modification classes as failures and explains each one's mechanism
-(multiplicative SAFETY_MARGIN regressed because the baseline it multiplied was
-noisy; full RNG seeding failed because `prepare.py`'s `tf.image.random_*`
-augmentations are unseeded and run under non-deterministic parallel
-`map(AUTOTUNE)`; etc.). Week 6's ablation table marks the abandoned levers explicitly.
-The agent did not paper over the abandoned experiments to make the project look
-cleaner — it preserved them as part of the trace.
+Where the scaffolding was missing — early Block A, before the controlled-
+experiment framework existed — the same agent confounded variables, claimed
+single-run noise tails as wins, and would have stopped at iter 13 (recall
+0.9555 on one run) if I hadn't externally imposed a replication rule. The
+behavior change between Block A and Block B is not "the agent got smarter."
+It's "the harness got better." When I designed `LOAD_CHECKPOINT` /
+`SAVE_CHECKPOINT` in Week 7, the deployment work landed in two days because
+the harness was already doing the right thing. When the harness was loose,
+the same agent thrashed.
 
-**Catching its own confounds.** Iters 4, 5, 7, and 9 changed two variables at
-once. In every case, the agent flagged the run as "confounded" in its own
-writeup (see `experiment_archive.md`) and explicitly noted that the gain could
-not be attributed. It did not silently claim credit for a confounded win.
+The implication for future agent-driven work is uncomfortable: most of the
+real research effort goes into building the rules of the game *before*
+turning the agent loose. The agent will execute whatever protocol you give
+it, including a bad one, very quickly.
 
-## 2. What the agent did poorly
+## 2. Early, undetected mistakes have serious future consequences
 
-**Early-block confounding.** Iters 4, 5, and 7 each bundled two changes, and
-their combined gain was the most impressive AUC jump of the early project
-(0.79 → 0.90). Because of the confounding, I genuinely don't know whether
-the `pos_weight=10` or the 224×224 upscale was the actual lever in iter 4.
-The Week-4 controlled experiment (iters 10-13) eventually went back and
-tested `pos_weight` in isolation and found it within noise — but that's
-4 retroactive iters of compute paid as the tax for the original sin.
+Iters 4, 5, and 7 each bundled two changes into one run. The combined gain
+was the most impressive AUC jump of the early project (0.79 → 0.90).
+Because of the confounding, I still don't know — and now cannot know — whether
+`pos_weight=10` or the 224×224 upscale was the actual lever in iter 4.
 
-**Over-trusting noise tails as signal.** Iter 13 produced recall 0.9555 (the
-first single run to clear 0.95). Iter 15 produced recall 0.9650. Both were
-noise tails — sibling runs in the same condition came in at 0.888 and 0.892
-respectively. The agent initially read these as the recall target being
-"basically met" before the Week-4 framework forced the rule that single-run
-recall in [0.93, 0.97] is within-condition noise and not a real win. Without
-the explicit replication discipline, the project could have stopped at iter 13
-with a false claim.
+That ambiguity propagated. The Week-4 controlled experiment (iters 10-13)
+had to retroactively test `pos_weight` in isolation and found it within
+noise; the upscale was never re-tested cleanly because by then it was
+load-bearing for the architecture and we couldn't afford the GPU-hours to
+unwind it. Four iterations of compute, plus a permanent unresolved hole
+in the project's causal story, paid as tax for the early confounding.
 
-**Pursuing the wrong root cause for recall variance.** The Week-5 priority-1
-fix was "remove cal-set leakage" (iters 14-16). It was wrong — the dominant
-variance source was the noisy `min` order statistic, not leakage. The agent
-chased the leakage hypothesis through 3 reps before reading its own data and
-pivoting to the estimator-swap experiment (iters 17-19), which produced the
-real variance fix. ~5 hours of GPU time spent on the wrong hypothesis.
+Similar pattern with documentation: `CLAUDE.md` was written at iter 25,
+the project ran to iter 36, and the umbrella doc went stale fast.
+Every "what's the current locked config?" question in Week 7 required
+re-deriving from `results.tsv` and `model.py`'s docstring because the
+top-level reference had drifted. Small early gaps in record-keeping
+became large late-stage research-archaeology costs.
 
-**Treating local optimization as the goal.** The agent kept finding "one more
-lever" to push recall higher: TARGET_RECALL, CALIBRATION_BATCHES,
-SAFETY_MARGIN, TTA. Each one had a plausible theoretical story. Most regressed
-or sat inside within-condition noise (see the table in §4 of
-[final_results_table.md](final_results_table.md)). The Week 6 scope-lock brief
-had to externally impose "stop searching" — left to its own devices the agent
-would have kept proposing levers indefinitely, because the marginal cost of
-proposing was lower than the marginal cost of stopping.
+The lesson is not "the agent should be more careful" — it's that the
+*cost of catching a mistake* grows monotonically with how long it sits
+undetected. A confounded iter caught the same day costs one rerun. A
+confounded iter caught in Week 4 costs a 3-rep controlled experiment.
+A confounded iter caught in Week 7 is unfixable. Forcing the check
+*before commit* (a `run.py` pre-flight that diffs `model.py` against
+the parent and rejects multi-variable changes) would have been worth
+more than any of the actual model improvements.
 
-**Documentation drift.** `CLAUDE.md` was anchored to iter 25 even though the
-project was at iter 34 + deployment by Week 7. The agent updated `model.py`
-docstring and per-week deliverable folders religiously but didn't update the
-top-level CLAUDE.md until prompted. Information stayed current in the most
-recent artifact and got stale in the older umbrella documents — a real
-maintenance pattern in any agent loop.
+## 3. An uninterpretable codebase is a research bottleneck
 
-## 3. What required human judgment (was irreplaceable)
+By iter 30 the `model.py` file had two-phase training, holdout threshold
+calibration, 4-view TTA, an additive safety margin, a checkpoint
+save/load path, a class-weight override, and an internal 128→224
+upscale buried inside `_build_module`. Every one of these was added
+for a defensible reason in the iteration that introduced it. Read
+together at iter 36, the file is not interpretable without
+`experiment_archive.md` open in another window.
 
-**Setting the success criteria.** AUC ≥ 0.85 and recall ≥ 0.95 are not
-defaults the agent invented — I set them because the medical screening
-context demands recall over precision (a missed cancer is worse than a
-false alarm). An agent left to optimize AUC alone would have stopped at
-iter 7 (AUC 0.90, recall 0.94) and called it done. The recall target is
-what kept the project iterating into B4 + TTA + SAFETY_MARGIN territory.
+This had concrete research costs. The determinism investigation
+(iters 20-21) took two analysis passes — first blaming the unseeded
+shuffle, then the augmentation ops — because the boundary between
+"what `prepare.py` controls" and "what `model.py` can reach" was not
+obvious from reading either file. The deployment work (Week 7)
+required a careful audit of every place a tensor was reshaped or
+normalized, because the ImageNet normalization happened inside the
+`nn.Module`, the [0,1] scaling happened inside `prepare.py`, and the
+NHWC→NCHW conversion happened inside `torch_adapter.py`. Three
+files, three implicit contracts, no single place that documented the
+end-to-end transform pipeline. The TFLite verification step
+(`verify_predictions.py`) caught the mismatch only because we ran a
+single image end-to-end and got bit-for-bit equality on the second
+try, not the first.
 
-**Calling scope lock at iter 34.** Both targets were met; the next plausible
-lever (an ensemble) would have required ~17 GPU-hours and a serialization
-wrapper, and gained at most ~0.005 AUC. The decision to stop was a human
-judgment about marginal returns vs. presentation/writeup time, framed by
-the Week 6 brief. The agent's natural impulse was to keep exploring.
+The agent did not, of its own accord, refactor for clarity. It
+added features. Each addition was locally sensible; the cumulative
+effect was a file that worked correctly but read like sediment. A
+human-imposed "refactor sweep at the end of each block" would have
+caught this; nothing in the agent's natural incentives did.
 
-**Diagnosing the determinism dead-end.** When iters 20-21 produced different
-results despite identical seeding, the question "why didn't this work?" had
-two plausible answers: (a) the seeding code is incomplete, (b) something
-upstream of `model.py` is non-deterministic. The agent's first instinct was
-to add more seeding (NumPy, hash seed, etc.); a second-pass diagnosis (also
-agent-generated) pinned the blame on the data shuffle in `prepare.py` —
-but that was wrong too, because the shuffle is actually seeded. The
-correct diagnosis (the five `tf.image.random_*` augmentation ops inside
-`.map(augment, num_parallel_calls=AUTOTUNE)` are unseeded at the op level,
-and parallel map ordering on stateful random ops is non-deterministic by
-design) only surfaced on careful re-reading of `prepare.py` line by line
-during Week 7 — well after the original determinism experiment. The
-empirical conclusion ("unreachable from `model.py` alone") was right from
-iter 21 onward, but the *mechanism* behind it took two iterations of
-analysis to get right. A reminder that "the agent's first plausible
-explanation for a negative result" needs the same scepticism as the
-result itself.
+## 4. Specific model choices have no reasoning attached unless you force it
 
-**Choosing what to ship vs. what to discard.** The deployment-mode decision —
-save best-of-N weights, ship the canonical checkpoint, accept that per-run
-variance is structural — was a product-decision judgment, not a research
-optimization. The agent built it well once the call was made, but the call
-itself ("we are done iterating; we are shipping") was outside the loop.
+`SAFETY_MARGIN=0.10`. `TARGET_RECALL=0.995`. `CALIBRATION_BATCHES=60`.
+TTA with 4 views, not 2 or 8. Two-phase training: 3 epochs frozen,
+7 epochs unfrozen, not 2/8 or 4/6.
 
-**Editing the editable surface only.** The constraint that `prepare.py` and
-`run.py` are frozen — and the related constraint that the worktree's
-`model.py` edits don't reach the trainer because data is gitignored —
-were rules I had to enforce repeatedly. The agent didn't violate them
-in the end, but it required clear, repeated, written constraints (in
-`CLAUDE.md` and memory) to stay inside the box.
+Every one of these numbers is in `model.py` as a class constant.
+Most of them were chosen by the agent during a single iteration,
+ran, produced a number, and stayed. A few were ablated (TARGET_RECALL
+at 0.95/0.99/0.995; CALIBRATION_BATCHES at 60/120). Most were not.
+The defense in the locked-claim writeup is empirical: "this config
+hits the targets." It is not "this number is principled because of
+X." When a reviewer asks "why 0.10 and not 0.08 or 0.15?", the
+honest answer is "we tried 0.10, it worked, we stopped." That is a
+fine answer for a Week-7 deliverable. It is a bad answer if the
+question is "would this generalize to a different dataset?"
 
-## 4. How I would redesign the loop
+The agent will happily propose specific numbers (0.10, 4 views,
+60 batches) when asked. It does not, by default, distinguish
+"this number is load-bearing and was ablated" from "this number is
+arbitrary and survived because it wasn't worth ablating." Both end
+up looking the same in `model.py`. Forcing the agent to annotate
+each constant with `# ablated: range tested, decision basis` —
+or refusing to land a new constant without that annotation —
+would have surfaced the difference. We didn't, and the result is a
+locked config whose specific values are defensible in aggregate
+and arbitrary in detail.
 
-**Force replication before commit.** Iters 8, 9, and 22 were logged as `keep`
-(per `run.py`'s default) and only manually reverted after the fact. A better
-loop would refuse to commit `model.py` until a 2-rep replication confirms the
-direction of effect. The Week-4 retrospective added the human discipline; the
-*tooling* still allows single-rep "wins."
+## 5. Look at every edit before running the code
 
-**Inline confound detection.** A trivial linter on the `description` string
-("how many distinct variable changes does this name?") would have caught
-iters 4, 5, 7, and 9 before they ran. The Week-4 reframe ("change exactly
-one thing per iter") came after the fact; better would be a `run.py` pre-flight
-that diffs `model.py` against the parent commit and refuses if more than one
-constant or one class changed.
+The agent will silently make changes that are not what you asked for.
+This is not a malice problem; it's a "the agent's interpretation of
+your prompt is not your interpretation of your prompt" problem.
 
-**Stronger separation of "evaluator" from "tuner."** Test metrics were logged
-every iteration. They never directly drove a model change (decisions used
-holdout cal), but having test results in front of me on every row created
-pressure to peek. A better loop would write test metrics to a file that is
-mode-locked or sealed during exploration, and only unsealed at scope lock.
-The brief's "test set opened only once" rule is hard to honor when the
-default tooling makes the result immediately visible.
+Concrete examples from this project: iter 22 launched 15 epochs on
+B4 because the prompt said "try a longer run" and the agent picked
+15; the result was overfitting (recall 0.75) and a wasted 2.5
+GPU-hours. Iter 9 bundled a threshold change with a class-weight
+change because the agent's plan named both and I didn't read the
+diff before saying "go." The 128→224 upscale that anchored the
+entire B2/B4 line was introduced inside `_build_module` in a
+multi-line edit that I approved without unfolding.
 
-**Pre-declared stop conditions.** Most of the late iters (26, 27-28, 29-31,
-32-34) were proposed in the spirit of "let's try one more thing." A
-pre-declared stop condition ("once 3 reps cross both targets, lock; do not
-propose new levers") would have stopped the loop at iter 25 if it had been
-declared earlier, or at iter 31 with a wash on recall and a kept AUC win.
-The Week 6 brief eventually imposed this externally.
+In every case, a 30-second diff review before launching `run.py`
+would have caught the issue. Iter 22 would have become "10 epochs,
+not 15." Iter 9 would have been split into two iters. The
+upscale would have been a separate, attributable iteration with
+its own controlled experiment. None of this required new tooling
+— just the discipline of reading the patch before pressing run.
 
-**Deployment as a first-class loop output, not a stretch.** The deployment
-pipeline (`SAVE_CHECKPOINT`/`LOAD_CHECKPOINT`, ONNX export, TFLite, Android)
-landed in Week 7 after the lever search closed. With hindsight, building
-the save/load determinism path *before* iter 14 would have made the
-"per-run variance" problem mostly irrelevant — we'd have been training
-candidates and shipping the best-of-N checkpoint from iter 6 onward.
-Treating training-time variance as the central problem (which 11 iterations
-attacked) was misframed; it became a deployment problem in the end.
+Late in the project, after Week 4, I started doing this consistently.
+The Block-B confound rate dropped to zero. The agent did not change;
+the review step did. Future agent-driven work should treat
+"approve the diff, then approve the run" as two separate gates,
+not one.
 
-## 5. What I learned about doing research with AI agents
+---
 
-The agent is a fast, tireless, honest **executor of a protocol I write**.
-It is not, and should not be, the source of the protocol. Every actual
-research decision in this project — what to count as a target, what to
-treat as noise, when to stop, what to ship — came from a human reading
-the brief, looking at the numbers, and writing a rule. The agent's job
-was to follow the rule mechanically across many trials without losing
-focus, and it did that well.
+## Synthesis
 
-When I tried to outsource the *judgment* to the agent (e.g., "find a way to
-make recall reproducible" early in Block B), the agent generated a plausible
-hypothesis (seeding everything), spent 5 hours of GPU time on it, and
-produced a clean negative result. It did not, of its own accord, step back
-and ask "is the premise of this question correct?" That kind of frame-check
-needs a human in the loop. When I gave the agent narrow, well-formed
-questions ("change `pos_weight` from 10 to 20, run 2 reps, decide on the
-basis of within-condition noise"), it was excellent.
+The five lessons compound into one: **agent-assisted research is
+mostly about the work you do around the agent, not the work the
+agent does.** Set up the harness, catch mistakes the day they
+happen, keep the codebase readable enough to reason about,
+attach reasoning to every choice, and read every diff before
+launching it. The agent will then run a long, disciplined search
+faster than a human could, log it honestly, and not get bored.
 
-The honest summary: **the agent compressed the wall-clock cost of running
-each experiment by maybe 10×, and held the *discipline* of the protocol
-better than a tired graduate student would. But the protocol itself —
-the choice of what to ask, how to ask it, and when to stop — was
-irreplaceably human.** A successful agent-assisted research loop is not
-"the agent does the research"; it's "the human structures the search and
-the agent executes it cleanly." Get the structure right and the agent is
-a force multiplier. Get it wrong and the agent is a fast generator of
-plausible-looking dead ends.
+When I gave the agent narrow, well-formed questions — "change
+`pos_weight` from 10 to 20, run 2 reps, decide on the basis of
+within-condition noise" — it was excellent. When I asked it
+broader questions — "find a way to make recall reproducible" —
+it generated plausible hypotheses, spent GPU time on them, and
+produced clean negative results without ever stepping back to
+ask whether the premise of the question was right. The frame-
+check is the human's job. The execution is the agent's. Get the
+division wrong and the speed advantage becomes a liability,
+because plausible-looking dead ends generated quickly are still
+dead ends.
