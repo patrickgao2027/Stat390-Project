@@ -37,7 +37,7 @@
 \maketitle
 
 \begin{abstract}
-We report on a 36-iteration AutoResearch loop that produced a calibrated
+I present a 36-iteration AutoResearch loop that produced a calibrated
 binary skin-lesion classifier on the combined ISIC 2019+2020 dermoscopy
 datasets ($\approx$57,586 images, $\approx$5.3:1 benign:malignant imbalance).
 The final method --- an ImageNet-pretrained EfficientNet-B4 with two-phase
@@ -67,10 +67,10 @@ the imaged lesion is malignant and a binary screening decision. The
 target deployment is a smartphone screening aid, not a diagnostic device:
 missed cancers are catastrophic; false alarms are tolerable.
 
-\textbf{From topic to contract.} The instructor-supplied prompt asked for
+\textbf{From topic to contract.} My \texttt{program.md} prompt asked for
 ``the best possible binary classifier'' on ISIC 2019+2020 with a
 plain-English deliverable, on-device inference desired but not blocking.
-This was formalized into a falsifiable AutoResearch contract with three
+This was formalized into an AutoResearch contract with three
 elements. (1) \textbf{Pre-registered targets:} ROC-AUC $\ge 0.85$ on
 the held-out test set and recall $\ge 0.95$ (chosen over precision to
 match the screening use case). (2) \textbf{Frozen interfaces:} two
@@ -254,6 +254,9 @@ random state for ops whose graph was already constructed inside
 surface alone.} This is the most consequential finding of the loop: it
 converts training-time variance from a tunable parameter into a structural
 constant, and motivated the eventual best-of-$N$ deployment artifact.
+\texttt{prepare.py} was not edited to add seeding to the augmentation
+operations in order to keep consistency across the AutoResearch
+iterations.
 
 \textbf{TARGET\_RECALL tuning (iters 17-19, 26).} Both directions
 regressed. Lowering TARGET\_RECALL from 0.995 to 0.95
@@ -320,17 +323,17 @@ mechanical bookkeeping. Once the Week-4 framework imposed
 experiment readable directly from \texttt{results.tsv}. Negative results
 were preserved and labeled rather than hidden.
 
-In our experience, auto-research is extremely good at generating new
+In my experience, auto-research is extremely good at generating new
 ideas and greatly accelerating the coding process toward set-out goals.
-The loop produced more candidate levers (pos\_weight tuning, threshold
-estimators, TTA configurations, SAFETY\_MARGIN variants,
-calibration-batch counts) than a human iterator working alone would
-have proposed in the same wall-clock window, and the mechanical parts
---- edit one constant, launch the run, log the row, draft the commit
---- were compressed to a few minutes of human time per iteration.
-Both target metrics (AUC $\geq$ 0.85, recall $\geq$ 0.95) were met and
-the deployment artifact shipped within the project window, which is
-the outcome the loop was set up to produce.
+The loop produced more candidate levers (\texttt{pos\_weight} tuning,
+threshold estimators, TTA configurations, \texttt{SAFETY\_MARGIN}
+variants, calibration-batch counts) than a human iterator working alone
+would have proposed in the same wall-clock window, and the mechanical
+parts --- edit one constant, launch the run, log the row, draft the
+commit --- were compressed to a few minutes of human time per
+iteration. Both target metrics (AUC $\ge 0.85$, recall $\ge 0.95$) were
+met and the deployment artifact shipped within the project window,
+which is the outcome the loop was set up to produce.
 
 \medskip
 \noindent\textbf{Code and data availability.}
