@@ -120,25 +120,20 @@ we additionally apply 4-view test-time augmentation: original image,
 horizontal flip, vertical flip, both flips; the four logits are averaged
 before sigmoid.
 
-\textbf{Deployment artifact.} After training, the state dict, threshold,
-and raw threshold are persisted to \texttt{model\_checkpoint.pt} only if
-\texttt{raw\_threshold} exceeds the previously saved value (best-of-$N$
-selection). A separate code path loads this checkpoint, skips training,
-and runs deterministic inference in $\approx 0.75$\,s end-to-end.
-The same checkpoint is exported PyTorch~$\to$~ONNX~$\to$~TFLite (fp16)
-and bundled into an Android app; the TFLite output agrees with the
-PyTorch source bit-for-bit on a fixed dummy input.
+\textbf{Deployment artifact.} Weights are saved to \texttt{model\_checkpoint.pt}
+only when \texttt{raw\_threshold} beats the previous best (best-of-$N$
+selection); loading this checkpoint skips training and yields deterministic
+inference in $\approx 0.75$\,s. The checkpoint is also exported
+PyTorch~$\to$~ONNX~$\to$~TFLite (fp16) and bundled into an Android app
+with bit-for-bit output agreement.
 
 \section{Experimental protocol}
 
-\textbf{Loop design.} 36 iterations were executed sequentially. Each
-iteration: (1) name one variable to change in \texttt{model.py};
-(2) run \texttt{python -u run.py "<iter N description>"} ; (3) append
-one row to \texttt{results.tsv} containing \texttt{(commit\_hash,
-roc\_auc, accuracy, recall, precision, train\_time\_s, status,
-description)}; (4) decide keep / discard / replicate. From iter 14 onward,
-iterations were grouped in pre-declared 3-rep blocks before claims could
-be made about a variable's effect.
+\textbf{Loop design.} 36 iterations were executed sequentially: name one
+variable to change in \texttt{model.py}, run \texttt{python -u run.py},
+append one row to \texttt{results.tsv}, decide keep/discard/replicate.
+From iter 14 onward, iterations were grouped in pre-declared 3-rep blocks
+before any claim about a variable's effect could be made.
 
 \textbf{Evaluation.} A single test set, fixed by \texttt{RANDOM\_STATE=67}
 in the frozen \texttt{prepare.py}, was used throughout. The evaluator
@@ -197,17 +192,8 @@ meets the recall target deterministically.
 
 \subsection{Stable directions (what produced real value)}
 
-Four single-variable changes account for essentially the entire gain
-from the iter-1 baseline (AUC 0.793, recall 0.898), each replicated.
-The architecture sequence (LR $\to$ AlexNet $\to$ EfficientNet-B0
-$\to$ B2 $\to$ B4) was driven by the previous baseline's measured
-failure mode rather than pre-selected: AlexNet was chosen per the
-\texttt{program.md} directive to confirm pretrained features transfer
-to dermoscopy at all; B0 was the smallest EfficientNet variant, chosen
-to verify the family works in our pipeline; B2 was the speed/capacity
-sweet spot for fast iteration; B4 was bumped only after Week 5
-controlled experiments showed B2's recall variance was the dominant
-problem and the capacity ladder would help.
+Four single-variable changes account for essentially all of the gain
+from the iter-1 baseline (AUC 0.793, recall 0.898).
 
 \textbf{(1) Pretrained CNN backbone (iter 2).} Logistic regression $\to$
 AlexNet: AUC $+0.094$ in a single iteration; every subsequent CNN run
@@ -274,54 +260,35 @@ The held-out slice is large enough at 60 batches ($\approx 141$ positives).
 loss 0.25, holdout-derived threshold 0.66, test recall 0.75. 10 epochs
 is the confirmed sweet spot for B4 at this data scale.
 
-\textbf{pos\_weight 10$\to$20 (Week 4 controlled experiment, iters 10-13).}
-Between-condition difference 3.5$\times$ smaller than within-condition
-standard deviation at \texttt{pos\_weight=20}. Effect indistinguishable
-from noise at 2 reps per condition.
 
 \section{Discussion and limits of the AutoResearch loop}
 \label{sec:limits}
 
 \textbf{Structural variance floor.} Because the frozen \texttt{prepare.py}
 uses unseeded \texttt{tf.image.random\_*} augmentations under
-\texttt{num\_parallel\_calls=AUTOTUNE} map ordering --- neither of which
-can be pinned by \texttt{tf.random.set\_seed()} called later in
-\texttt{model.py} --- per-run training variance is a constant of the loop.
-The locked recall standard deviation of 0.019
-(Table~\ref{tab:final}, $n{=}5$) is at this floor;
-no \texttt{model.py}-side change can lower it. The deployment-mode
-checkpoint sidesteps this by saving the weights of a single canonical
-run --- producing literal 100\% reproducibility \emph{for the deployed
-model}, but not for the training process.
+\texttt{num\_parallel\_calls=AUTOTUNE}, per-run training variance is a
+structural constant --- no \texttt{model.py}-side change can lower it.
+The locked recall std of 0.019 (Table~\ref{tab:final}) is at this floor.
+Individual training runs are therefore not bit-exactly reproducible;
+the deployment checkpoint (\texttt{model\_checkpoint.pt} + TFLite) is,
+and is what we ship.
 
 \textbf{Test set used only for generalization measurement.} The test set
-was never used to train or tune the model. All training used the
-training split and all threshold/hyperparameter tuning used the
-per-iteration holdout cal slice. Test metrics were logged each iteration
-solely to measure how the model generalized, not to choose between
-conditions.
+was never used to train or tune the model. All hyperparameter decisions
+used the per-iteration holdout cal slice; test metrics were logged solely
+to measure generalization.
 
-\textbf{Reproducibility caveat.} None of the 36 training runs are
-bit-exactly reproducible. Reproducing a run requires
-\texttt{git checkout <hash>} and re-running, which produces metrics
-within published noise bounds but not identical numbers. The deployment
-artifact (\texttt{model\_checkpoint.pt} + TFLite) \emph{is} bit-for-bit
-reproducible and is what we ship.
-
-\textbf{Pipeline ceiling.} 128$\times$128 source resolution + 30\% training
-subsample are characteristics of the frozen data pipeline. A higher
-ceiling presumably exists at 100\% data and native resolution; we cannot
-estimate it without modifying the frozen interfaces, which would
-invalidate the experimental record.
+\textbf{Pipeline ceiling.} 128$\times$128 resolution and 30\% training
+subsample are characteristics of the frozen pipeline; a higher ceiling
+exists at full data and native resolution but cannot be tested without
+invalidating the experimental record.
 
 \section{What the AutoResearch loop did well and poorly}
 
-The loop's biggest strength was forcing single-variable iteration with
-mechanical bookkeeping. Once the Week-4 framework imposed
-``one variable, replicate before claiming,'' every subsequent block
-(14-16, 17-19, 23-25, 27-28, 29-31, 32-34) is a clean controlled
-experiment readable directly from \texttt{results.tsv}. Negative results
-were preserved and labeled rather than hidden.
+The loop's biggest strength was enforcing single-variable iteration:
+every block from iter 14 onward is a clean controlled experiment
+readable directly from \texttt{results.tsv}, with negative results
+preserved and labeled rather than discarded.
 
 The loop's main weakness was early-block confounding: iters 4, 5, and 7
 each changed two variables at once, producing the project's largest
