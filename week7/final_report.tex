@@ -242,13 +242,17 @@ from within-condition noise. We summarize the most informative failures.
 \textbf{Full RNG seeding for determinism (iters 20-21).} Identically seeded
 runs produced different per-epoch losses (1.0396 vs 1.0288 at epoch 1),
 different thresholds (0.560 vs 0.603), and different recall
-(0.825 vs 0.850). Root cause: \texttt{prepare.py} calls
-\texttt{tf.data.Dataset.shuffle()} during \texttt{load\_data()}, which
-runs before \texttt{model.py} is imported, so \texttt{tf.random.set\_seed()}
-inside \texttt{model.py} is too late to affect the shuffle.
-\emph{Determinism is unreachable from the editable surface alone.}
-This is the most consequential finding of the loop: it converts
-training-time variance from a tunable parameter into a structural
+(0.825 vs 0.850). The shuffle in \texttt{prepare.py} is in fact seeded
+(\texttt{ds.shuffle(seed=RANDOM\_STATE)}); the real culprits are the
+five \texttt{tf.image.random\_*} augmentation ops inside
+\texttt{.map(augment, num\_parallel\_calls=AUTOTUNE)}, none of which
+receive an op-level \texttt{seed=} argument, combined with the
+non-deterministic ordering of \texttt{AUTOTUNE} parallel map workers.
+\texttt{tf.random.set\_seed()} in \texttt{model.py} cannot pin per-op
+random state for ops whose graph was already constructed inside
+\texttt{prepare.py}. \emph{Determinism is unreachable from the editable
+surface alone.} This is the most consequential finding of the loop: it
+converts training-time variance from a tunable parameter into a structural
 constant, and motivated the eventual best-of-$N$ deployment artifact.
 
 \textbf{TARGET\_RECALL tuning (iters 17-19, 26).} Both directions
@@ -276,9 +280,12 @@ from noise at 2 reps per condition.
 \label{sec:limits}
 
 \textbf{Structural variance floor.} Because the frozen \texttt{prepare.py}
-shuffles data before any seed-setting code in \texttt{model.py} can run,
-per-run training variance is a constant of the loop. The locked recall
-standard deviation of 0.023 (Table~\ref{tab:final}) is at this floor;
+uses unseeded \texttt{tf.image.random\_*} augmentations under
+\texttt{num\_parallel\_calls=AUTOTUNE} map ordering --- neither of which
+can be pinned by \texttt{tf.random.set\_seed()} called later in
+\texttt{model.py} --- per-run training variance is a constant of the loop.
+The locked recall standard deviation of 0.019
+(Table~\ref{tab:final}, $n{=}5$) is at this floor;
 no \texttt{model.py}-side change can lower it. The deployment-mode
 checkpoint sidesteps this by saving the weights of a single canonical
 run --- producing literal 100\% reproducibility \emph{for the deployed

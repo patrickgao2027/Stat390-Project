@@ -24,7 +24,7 @@ Iters 32-36 (`results.tsv` rows 33-37) — five replicates of the locked config:
 - TARGET_RECALL ≠ 0.995 (iters 17-19 at 0.95, iter 26 at 0.99 — both regressed)
 - CALIBRATION_BATCHES > 60 (iters 27-28 at 120 — recall mean dropped 0.03)
 - > 10 epochs (iter 22 at 15 — overfit, recall 0.75)
-- Full RNG determinism (iters 20-21 — unreachable from `model.py` because frozen `prepare.py` shuffles before import)
+- Full RNG determinism (iters 20-21 — unreachable from `model.py` because frozen `prepare.py`'s `tf.image.random_*` augmentations are unseeded and run under parallel `map(AUTOTUNE)`)
 - Backbone change beyond B4 (B5/B6 — diminishing returns, ~1.5× compute)
 - POS_WEIGHT > 10 (iters 11/13 on B2 — within within-condition noise)
 - Mixup/CutMix, focal loss, AdamW, ensemble training, pipeline unfreezing — all out of scope

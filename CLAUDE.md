@@ -44,7 +44,7 @@ torch_adapter.py     ──────►  BaseTorchModel (predict, predict_pro
 run.py (frozen)      ──────►  fit, evaluate, log to results.tsv
 ```
 
-- **`prepare.py`** — loads ISIC CSV metadata, merges 2019+2020, filters indeterminate diagnoses, **stratified 80/20 split** seeded by `RANDOM_STATE=67`, subsamples training to 30%, returns `tf.data.Dataset` pipelines yielding NHWC float32 in `[0, 1]` at **128×128**, plus `class_weight` dict (~5.31 for malignant). The `tf.data.Dataset.shuffle()` calls happen here, **before** `model.py` is ever imported. Setting `tf.random.set_seed()` in `model.py` therefore runs too late to control the shuffle order — full training determinism is not achievable from `model.py` alone without modifying the frozen `prepare.py`.
+- **`prepare.py`** — loads ISIC CSV metadata, merges 2019+2020, filters indeterminate diagnoses, **stratified 80/20 split** seeded by `RANDOM_STATE=67`, subsamples training to 30%, returns `tf.data.Dataset` pipelines yielding NHWC float32 in `[0, 1]` at **128×128**, plus `class_weight` dict (~5.31 for malignant). The shuffle is seeded (`ds.shuffle(seed=RANDOM_STATE)`), but the five `tf.image.random_*` augmentation ops inside `.map(augment, num_parallel_calls=AUTOTUNE)` are **not** seeded individually, and `AUTOTUNE` parallel ordering on top of stateful random ops makes the augmented stream non-reproducible. Setting `tf.random.set_seed()` in `model.py` doesn't fix this — the per-op random state for each `tf.image.random_*` call would need to be pinned inside `prepare.py`. Full training determinism is therefore not achievable from `model.py` alone without modifying the frozen `prepare.py`.
 - **`torch_adapter.py`** — `BaseTorchModel` adapter that wraps a `nn.Module` producing logits. Handles the TF→Torch conversion (`NHWC → NCHW`), the BCEWithLogitsLoss training loop with `pos_weight`, and exposes `predict()` / `predict_proba()`. **`predict()` uses a hardcoded `threshold = 0.5`** unless the subclass overrides it. Most architectural choices and any threshold tuning logic live in `model.py` subclasses, not here.
 - **`model.py`** — must subclass `BaseTorchModel`, override `_build_module()` to return the `nn.Module`, and may override `fit()` for two-phase training, threshold calibration, etc. The `nn.Module` typically upscales the 128×128 input to **224×224** with `F.interpolate` and applies ImageNet normalization before passing to a pretrained torchvision backbone.
 - **`run.py`** — calls `load_data()` → `build_model()` → `model.fit(...)` → `evaluate(model, test_ds, y_test)` → log row → save ROC + confusion-matrix plots.
@@ -109,7 +109,7 @@ calibration + 4-view TTA + additive `SAFETY_MARGIN=0.10`.
 - ❌ TARGET_RECALL 0.995 → 0.99 (iter 26): threshold moved wrong direction, recall 0.88
 - ❌ CALIBRATION_BATCHES 60 → 120 (iters 27-28): recall mean dropped 0.03
 - ❌ 15 epochs on B4 (iter 22): overfit — training loss 0.25, threshold 0.66, recall 0.75
-- ❌ Full RNG seeding (iters 20-21): data shuffle in frozen `prepare.py` runs before `model.py` imports — determinism not reachable from `model.py`
+- ❌ Full RNG seeding (iters 20-21): the shuffle in frozen `prepare.py` IS seeded, but the augmentation ops (`tf.image.random_*` with `num_parallel_calls=AUTOTUNE`) are not — determinism not reachable from `model.py`
 
 Note on `experiment` hashes: because multi-rep experiments often run without
 intermediate commits, several iters share the same parent-commit hash (e.g.
@@ -129,8 +129,8 @@ recovery, minor module-boundary tweaks with instructor approval.
 numbers, adding "one more big direction." New ideas belong in a future project.
 
 **Dropped directions (officially off the table):**
-- Seeding/full determinism from `model.py` (proven unreachable — frozen `prepare.py`
-  shuffles before `model.py` imports)
+- Seeding/full determinism from `model.py` (proven unreachable — frozen `prepare.py`'s
+  `tf.image.random_*` augmentations are unseeded and run under `num_parallel_calls=AUTOTUNE`)
 - > 10 epochs on B4 (proven to overfit — iter 22)
 - pos_weight tuning beyond 10 (proven within-noise)
 - SAFETY_MARGIN multipliers (proven to regress)

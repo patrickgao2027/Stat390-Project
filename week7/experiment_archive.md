@@ -52,7 +52,7 @@ actually used.
 | 18 | 9d1cc2d | keep | rep 2/3 | 0.8938 | 0.7705 | 3807 | |
 | 19 | 9d1cc2d | keep | rep 3/3 | 0.8909 | 0.7491 | 3681 | Recall std **0.014** vs **0.039** with min — 2.8× tighter. Mean recall fell 0.92 → 0.77 (tradeoff quantified). |
 | 20 | a73de59 | keep | full RNG determinism (seed=67, cudnn deterministic) + revert to TARGET_RECALL=0.995 | 0.8962 | 0.8245 | 3552 | Threshold=0.560. |
-| 21 | 7965f2b | keep | determinism verification — identical code, no changes | 0.8936 | 0.8498 | 3673 | Threshold=0.603. **Determinism NOT achieved**: losses differed from epoch 1 (1.0396 vs 1.0288). Root cause: `prepare.py` calls `tf.data.shuffle()` before `model.py` is imported, so `tf.random.set_seed()` in model.py runs too late. Full determinism requires modifying the frozen `prepare.py`. |
+| 21 | 7965f2b | keep | determinism verification — identical code, no changes | 0.8936 | 0.8498 | 3673 | Threshold=0.603. **Determinism NOT achieved**: losses differed from epoch 1 (1.0396 vs 1.0288). Root cause: `prepare.py`'s `ds.shuffle()` IS seeded, but the five `tf.image.random_*` augmentation ops inside `.map(augment, num_parallel_calls=AUTOTUNE)` are not — and parallel map ordering of stateful random ops is non-deterministic. `tf.random.set_seed()` in `model.py` cannot pin per-op random state after the fact. Full determinism requires modifying the frozen `prepare.py` (add per-op `seed=` arguments to each augmentation + force deterministic map ordering). |
 | 22 | 4af50e1 | **discard** (logged as keep) | TOTAL_EPOCHS 10 → 15 (+5 fine-tune passes) | 0.8852 | 0.7536 | 5513 | **Regression** — training loss 0.25 (overfit); threshold 0.660; recall 0.754. Reverted. |
 
 ### Block C — backbone upgrade and recall-mean push (iters 23-28)
@@ -159,8 +159,10 @@ C:\Users\Owner\anaconda3\python.exe -u run.py "any description"
 reproducible. Pre-iter-20 runs lack PyTorch/CUDA seeding. Iters 20-21 added
 full PyTorch+TF+CUDA seeding but still produced different results
 (AUC 0.896 vs 0.894, recall 0.825 vs 0.850) because `prepare.py`'s
-`tf.data.shuffle()` runs before `model.py` is imported — the data pipeline
-cannot be seeded from `model.py` alone (proven, see iter 21 notes above).
+augmentation ops (`tf.image.random_*` inside `.map(augment, num_parallel_calls=AUTOTUNE)`)
+are unseeded at the op level and run with non-deterministic parallel ordering —
+the data pipeline cannot be made deterministic from `model.py` alone
+(proven, see iter 21 notes above).
 
 **The deployment artifact is bit-for-bit reproducible.** Once `model_checkpoint.pt`
 exists, loading it via `LOAD_CHECKPOINT=True` produces identical metrics every time

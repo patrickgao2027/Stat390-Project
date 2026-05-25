@@ -51,7 +51,7 @@ Optimizer: Adam, lr split 1e-3 (warmup) → 1e-4 (fine-tune).
 | Direction | Iters | Why dropped |
 |---|---|---|
 | Lower-target recall calibration (TARGET_RECALL=0.95) | 17-19 | Mean recall fell to 0.77 — wrong direction |
-| Full RNG seeding for determinism | 20-21 | Frozen `prepare.py` shuffles before `model.py` imports; full determinism unreachable |
+| Full RNG seeding for determinism | 20-21 | Frozen `prepare.py`'s `tf.image.random_*` augmentations are unseeded and run under non-deterministic parallel `.map(AUTOTUNE)`; full determinism unreachable from `model.py` |
 | More than 10 training epochs | 22 | Overfitting: train loss 0.25, recall 0.75 |
 | TARGET_RECALL=0.99 (less-conservative cal) | 26 | Threshold moved wrong direction; recall 0.882 |
 | CALIBRATION_BATCHES=120 (more cal positives) | 27-28 | Lost training data; recall mean 0.909 (worse) |

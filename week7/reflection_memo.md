@@ -37,8 +37,9 @@ wall clock was GPU training). At 36 iterations, that compression mattered.
 **Honest writeup of negative results.** The Week-5 "what actually worked" memo
 labels 6 of 10 modification classes as failures and explains each one's mechanism
 (multiplicative SAFETY_MARGIN regressed because the baseline it multiplied was
-noisy; full RNG seeding failed because `prepare.py` shuffles before `model.py`
-imports; etc.). Week 6's ablation table marks the abandoned levers explicitly.
+noisy; full RNG seeding failed because `prepare.py`'s `tf.image.random_*`
+augmentations are unseeded and run under non-deterministic parallel
+`map(AUTOTUNE)`; etc.). Week 6's ablation table marks the abandoned levers explicitly.
 The agent did not paper over the abandoned experiments to make the project look
 cleaner — it preserved them as part of the trace.
 
@@ -108,12 +109,19 @@ the Week 6 brief. The agent's natural impulse was to keep exploring.
 results despite identical seeding, the question "why didn't this work?" had
 two plausible answers: (a) the seeding code is incomplete, (b) something
 upstream of `model.py` is non-deterministic. The agent's first instinct was
-to add more seeding (NumPy, hash seed, etc.). It took human inspection to
-diagnose that `prepare.py` runs `tf.data.shuffle()` before `model.py` is
-imported, which is why no amount of seeding in `model.py` would ever fix
-the issue. This is the *one* hard constraint in the project, and identifying
-it required reading the frozen `prepare.py` source and reasoning about
-import ordering — not something the agent surfaced unprompted.
+to add more seeding (NumPy, hash seed, etc.); a second-pass diagnosis (also
+agent-generated) pinned the blame on the data shuffle in `prepare.py` —
+but that was wrong too, because the shuffle is actually seeded. The
+correct diagnosis (the five `tf.image.random_*` augmentation ops inside
+`.map(augment, num_parallel_calls=AUTOTUNE)` are unseeded at the op level,
+and parallel map ordering on stateful random ops is non-deterministic by
+design) only surfaced on careful re-reading of `prepare.py` line by line
+during Week 7 — well after the original determinism experiment. The
+empirical conclusion ("unreachable from `model.py` alone") was right from
+iter 21 onward, but the *mechanism* behind it took two iterations of
+analysis to get right. A reminder that "the agent's first plausible
+explanation for a negative result" needs the same scepticism as the
+result itself.
 
 **Choosing what to ship vs. what to discard.** The deployment-mode decision —
 save best-of-N weights, ship the canonical checkpoint, accept that per-run
